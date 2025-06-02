@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Видеочат</title>
+    <script src="https://meet.jit.si/external_api.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .header h1 {
+            color: white;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .end-btn {
+            background: #ff4757;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 10px rgba(255, 71, 87, 0.3);
+        }
+
+        .end-btn:hover {
+            background: #ff3742;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 15px rgba(255, 71, 87, 0.4);
+        }
+
+        .end-btn:active {
+            transform: translateY(0);
+        }
+
+        .video-container {
+            flex: 1;
+            position: relative;
+            background: #000;
+        }
+
+        #jitsi-container {
+            width: 100%;
+            height: 100%;
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: white;
+            z-index: 10;
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #667eea;
+            animation: spin 1s ease-in-out infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .error {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: white;
+            background: rgba(255, 71, 87, 0.9);
+            padding: 20px;
+            border-radius: 10px;
+            max-width: 300px;
+            z-index: 20;
+        }
+
+        .error h3 {
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .error p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: #2ed573;
+            border-radius: 50%;
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        /* Мобильная адаптация */
+        @media (max-width: 768px) {
+            .header {
+                padding: 12px 15px;
+            }
+            
+            .header h1 {
+                font-size: 16px;
+            }
+            
+            .end-btn {
+                padding: 6px 12px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>
+                <span class="status-indicator"></span>
+                Видеочат
+            </h1>
+            <button class="end-btn" onclick="endCall()">
+                🔚 Завершить
+            </button>
+        </div>
+        
+        <div class="video-container">
+            <div class="loading" id="loading">
+                <div class="loading-spinner"></div>
+                <p>Подключение к видеочату...</p>
+            </div>
+            <div id="jitsi-container"></div>
+        </div>
+    </div>
+
+    <script>
+        let api = null;
+        let roomId = null;
+        let isConnected = false;
+
+        // Получаем параметры из URL
+        function getUrlParameter(name) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(name);
+        }
+
+        // Генерируем случайное имя пользователя
+        function generateUsername() {
+            const adjectives = ['Cool', 'Smart', 'Happy', 'Bright', 'Kind', 'Swift'];
+            const nouns = ['User', 'Guest', 'Friend', 'Buddy', 'Mate', 'Pal'];
+            const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
+            const noun = nouns[Math.floor(Math.random() * nouns.length)];
+            const number = Math.floor(Math.random() * 100);
+            return `${adjective}${noun}${number}`;
+        }
+
+        // Показать ошибку
+        function showError(message) {
+            const loading = document.getElementById('loading');
+            loading.innerHTML = `
+                <div class="error">
+                    <h3>❌ Ошибка подключения</h3>
+                    <p>${message}</p>
+                </div>
+            `;
+        }
+
+        // Инициализация Jitsi Meet
+        function initJitsi() {
+            roomId = getUrlParameter('room');
+            
+            if (!roomId) {
+                showError('Не указан ID комнаты');
+                return;
+            }
+
+            const domain = 'meet.jit.si';
+            const options = {
+                roomName: `VideoChat_${roomId}`,
+                width: '100%',
+                height: '100%',
+                parentNode: document.querySelector('#jitsi-container'),
+                userInfo: {
+                    displayName: generateUsername()
+                },
+                configOverwrite: {
+                    startWithAudioMuted: false,
+                    startWithVideoMuted: false,
+                    enableWelcomePage: false,
+                    prejoinPageEnabled: false,
+                    disableModeratorIndicator: true,
+                    startScreenSharing: false,
+                    enableEmailInStats: false,
+                    enableClosePage: false
+                },
+                interfaceConfigOverwrite: {
+                    DISABLE_JOIN_LEAVE_NOTIFICATIONS: true,
+                    DISABLE_PRESENCE_STATUS: true,
+                    HIDE_INVITE_MORE_HEADER: true,
+                    SHOW_JITSI_WATERMARK: false,
+                    SHOW_WATERMARK_FOR_GUESTS: false,
+                    SHOW_POWERED_BY: false,
+                    TOOLBAR_BUTTONS: [
+                        'microphone', 'camera', 'hangup',
+                        'settings', 'videoquality', 'filmstrip',
+                        'tileview', 'shortcuts'
+                    ],
+                    SETTINGS_SECTIONS: [
+                        'devices', 'language', 'moderator', 'profile'
+                    ]
+                }
+            };
+
+            try {
+                api = new JitsiMeetExternalAPI(domain, options);
+                
+                // Обработчики событий
+                api.addEventListener('videoConferenceJoined', () => {
+                    console.log('Подключен к видеочату');
+                    document.getElementById('loading').style.display = 'none';
+                    isConnected = true;
+                });
+
+                api.addEventListener('videoConferenceLeft', () => {
+                    console.log('Покинул видеочат');
+                    isConnected = false;
+                    endCall();
+                });
+
+                api.addEventListener('readyToClose', () => {
+                    console.log('Готов к закрытию');
+                    endCall();
+                });
+
+                // Скрываем загрузку через 10 секунд в любом случае
+                setTimeout(() => {
+                    const loading = document.getElementById('loading');
+                    if (loading.style.display !== 'none') {
+                        loading.style.display = 'none';
+                    }
+                }, 10000);
+
+            } catch (error) {
+                console.error('Ошибка инициализации Jitsi:', error);
+                showError('Не удалось подключиться к видеочату');
+            }
+        }
+
+        // Завершение звонка
+        function endCall() {
+            if (api) {
+                try {
+                    api.dispose();
+                } catch (error) {
+                    console.error('Ошибка при закрытии Jitsi:', error);
+                }
+            }
+            
+            // Закрываем WebApp и возвращаемся в бота
+            if (window.Telegram && window.Telegram.WebApp) {
+                window.Telegram.WebApp.close();
+            } else {
+                // Fallback для тестирования вне Telegram
+                window.close();
+            }
+        }
+
+        // Обработка кнопки "Назад" в браузере
+        window.addEventListener('beforeunload', () => {
+            if (api) {
+                api.dispose();
+            }
+        });
+
+        // Обработка закрытия WebApp
+        window.addEventListener('beforeunload', (event) => {
+            if (isConnected) {
+                event.preventDefault();
+                event.returnValue = '';
+                return 'Вы уверены, что хотите покинуть видеочат?';
+            }
+        });
+
+        // Инициализация Telegram WebApp
+        if (window.Telegram && window.Telegram.WebApp) {
+            const tg = window.Telegram.WebApp;
+            tg.ready();
+            tg.expand();
+            
+            // Настройка цветовой схемы
+            tg.setHeaderColor('#667eea');
+            tg.setBackgroundColor('#667eea');
+            
+            // Показываем кнопку "Назад"
+            tg.BackButton.show();
+            tg.BackButton.onClick(endCall);
+        }
+
+        // Запуск при загрузке страницы
+        document.addEventListener('DOMContentLoaded', () => {
+            // Небольшая задержка для лучшего UX
+            setTimeout(initJitsi, 500);
+        });
+
+        // Обработка ошибок JavaScript
+        window.addEventListener('error', (event) => {
+            console.error('JavaScript error:', event.error);
+            showError('Произошла ошибка загрузки');
+        });
+    </script>
+</body>
+</html>
