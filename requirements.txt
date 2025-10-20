@@ -10,11 +10,7 @@ Flask-SocketIO==5.3.5
 python-socketio==5.10.0
 
 # Async Support
-asyncio==3.4.3
 aiohttp==3.9.1
-
-# Database
-sqlite3
 
 # Configuration
 python-dotenv==1.0.0
