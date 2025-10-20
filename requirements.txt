@@ -1,0 +1,36 @@
+# Trading Bot Dependencies
+ccxt==4.2.0
+pandas==2.1.4
+numpy==1.26.3
+ta==0.11.0
+
+# Web Interface
+Flask==3.0.0
+Flask-SocketIO==5.3.5
+python-socketio==5.10.0
+
+# Async Support
+asyncio==3.4.3
+aiohttp==3.9.1
+
+# Database
+sqlite3
+
+# Configuration
+python-dotenv==1.0.0
+PyYAML==6.0.1
+
+# Logging
+colorlog==6.8.0
+
+# Plotting
+plotly==5.18.0
+matplotlib==3.8.2
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.23.2
+
+# Utilities
+requests==2.31.0
+websockets==12.0
