@@ -159,7 +159,7 @@ crypto-telegram-bot/
 │   ├── filters/           # Фильтрация и оценка важности
 │   ├── ai/                # AI генерация контента
 │   ├── database/          # Модели и БД
-│   ├── telegram/          # Telegram интеграция
+│   ├── bot/               # Telegram интеграция
 │   ├── schedulers/        # Планирование задач
 │   ├── utils/             # Утилиты
 │   ├── config.py          # Конфигурация
