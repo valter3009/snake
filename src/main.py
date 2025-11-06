@@ -88,8 +88,9 @@ class CryptoBot:
         )
         logger.info("✅ Планировщик готов")
 
-        # Флаг для graceful shutdown
+        # Флаги для graceful shutdown
         self.running = False
+        self.scheduler_started = False
 
         logger.info("\n" + "=" * 70)
         logger.info("✅ ВСЕ КОМПОНЕНТЫ ИНИЦИАЛИЗИРОВАНЫ")
@@ -112,6 +113,7 @@ class CryptoBot:
 
         # Запускаем планировщик
         self.scheduler.start()
+        self.scheduler_started = True
 
         # Устанавливаем флаг
         self.running = True
@@ -136,9 +138,13 @@ class CryptoBot:
 
         self.running = False
 
-        # Останавливаем планировщик
-        logger.info("Остановка планировщика...")
-        self.scheduler.stop()
+        # Останавливаем планировщик если он был запущен
+        if self.scheduler_started:
+            logger.info("Остановка планировщика...")
+            try:
+                self.scheduler.stop()
+            except Exception as e:
+                logger.warning(f"Ошибка при остановке планировщика: {e}")
 
         # Закрываем HTTP клиенты
         logger.info("Закрытие HTTP соединений...")
