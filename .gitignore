@@ -4,6 +4,9 @@ __pycache__/
 *$py.class
 *.so
 .Python
+env/
+venv/
+ENV/
 build/
 develop-eggs/
 dist/
@@ -16,19 +19,14 @@ parts/
 sdist/
 var/
 wheels/
-pip-wheel-metadata/
-share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-MANIFEST
 
-# Virtual Environment
+# Virtual environments
+.venv
 venv/
-env/
 ENV/
-env.bak/
-venv.bak/
 
 # IDEs
 .vscode/
@@ -36,56 +34,25 @@ venv.bak/
 *.swp
 *.swo
 *~
+
+# OS
 .DS_Store
+Thumbs.db
 
 # Environment variables
 .env
 .env.local
-.env.*.local
-
-# Database
-*.db
-*.sqlite
-*.sqlite3
-bot/data/*.db
 
 # Logs
 *.log
-bot/logs/*.log
-logs/
-
-# Trading data
-bot/data/
-backups/
-
-# Flask
-instance/
-.webassets-cache
 
 # Testing
-.pytest_cache/
 .coverage
+.pytest_cache/
 htmlcov/
-.tox/
-.nox/
 
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# MyPy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Pyre
-.pyre/
-
-# Config (keep example files)
-bot/config/config.yaml
-!bot/config/config.yaml.example
-
-# Temporary files
-*.tmp
-*.bak
-*.swp
-.cache/
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
