@@ -56,3 +56,19 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Cache
+data/cache/*
+!data/cache/.gitkeep
+
+# Railway
+.railway/
+
+# Project specific
+logs/
+crypto_bot.db
