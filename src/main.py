@@ -20,8 +20,8 @@ from collectors.market_collector import MarketCollector
 from collectors.fear_greed_collector import FearGreedCollector
 from filters.importance_scorer import ImportanceScorer
 from ai.content_generator import ContentGenerator
-from telegram.channel_poster import TelegramPublisher
-from telegram.message_queue import MessageQueue
+from bot.channel_poster import TelegramPublisher
+from bot.message_queue import MessageQueue
 from schedulers.task_scheduler import TaskScheduler
 
 logger = setup_logger('crypto_bot', level=config.log.level, log_dir=config.log.log_dir)
