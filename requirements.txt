@@ -1,17 +1,24 @@
-# Основные зависимости
-python-dotenv==1.0.0
-aiohttp==3.9.1
-anthropic==0.18.1
+# Telegram Bot
 python-telegram-bot==20.7
-APScheduler==3.10.4
 
-# База данных
-SQLAlchemy==2.0.25
-psycopg2-binary==2.9.9
-
-# Парсинг
-beautifulsoup4==4.12.2
+# Парсинг новостей
+feedparser==6.0.11
+beautifulsoup4==4.12.3
 lxml==5.1.0
 
-# Утилиты
-python-dateutil==2.8.2
+# HTTP запросы
+requests==2.31.0
+
+# AI обработка
+anthropic==0.18.1
+
+# Работа с изображениями
+Pillow==10.2.0
+
+# Планировщик задач
+schedule==1.2.1
+
+# Переменные окружения
+python-dotenv==1.0.1
+
+# База данных (встроенная SQLite)
