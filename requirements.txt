@@ -1,24 +1,32 @@
 # Telegram Bot
-python-telegram-bot==20.7
+python-telegram-bot==21.0.1
 
-# Парсинг новостей
+# Anthropic Claude API
+anthropic==0.39.0
+
+# NewsAPI
+newsapi-python==0.2.7
+
+# RSS парсинг
 feedparser==6.0.11
-beautifulsoup4==4.12.3
-lxml==5.1.0
 
-# HTTP запросы
-requests==2.31.0
+# HTTP клиент
+aiohttp==3.10.10
 
-# AI обработка
-anthropic==0.18.1
+# База данных
+SQLAlchemy==2.0.36
+asyncpg==0.30.0
+alembic==1.13.3
+psycopg2-binary==2.9.10
 
-# Работа с изображениями
-Pillow==10.2.0
+# Обработка дат
+python-dateutil==2.9.0.post0
 
-# Планировщик задач
-schedule==1.2.1
+# Часовые пояса
+pytz==2024.2
 
-# Переменные окружения
+# Обработка изображений
+Pillow==11.0.0
+
+# Парсинг и утилиты
 python-dotenv==1.0.1
-
-# База данных (встроенная SQLite)
