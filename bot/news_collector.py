@@ -2,7 +2,7 @@
 Сбор новостей из NewsAPI и RSS лент
 """
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional
 import asyncio
 
@@ -11,7 +11,7 @@ import feedparser
 from dateutil import parser as date_parser
 
 import bot.config
-from bot.database import db_manager
+import bot.database
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +196,7 @@ class NewsCollector:
                                     elif hasattr(entry, 'updated'):
                                         published_at = date_parser.parse(entry.updated)
                                     else:
-                                        published_at = datetime.utcnow()
+                                        published_at = datetime.now(timezone.utc)
 
                                     # Получаем изображение
                                     image_url = None
@@ -264,7 +264,7 @@ class NewsCollector:
         Returns:
             Отфильтрованный список
         """
-        cutoff_time = datetime.utcnow() - timedelta(hours=bot.config.config.NEWS_MAX_AGE_HOURS)
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=bot.config.config.NEWS_MAX_AGE_HOURS)
         fresh_news = [
             news for news in news_list
             if news.published_at >= cutoff_time
@@ -291,7 +291,7 @@ class NewsCollector:
                 continue
 
             # Проверяем, не опубликован ли уже
-            is_published = await db_manager.is_post_published(news.url)
+            is_published = await bot.database.db_manager.is_post_published(news.url)
             if is_published:
                 continue
 
