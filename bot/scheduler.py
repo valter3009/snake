@@ -12,12 +12,13 @@ from telegram import Bot
 from telegram.error import TelegramError
 
 import bot.config
-from bot.news_collector import news_collector
-from bot.news_analyzer import news_analyzer
-from bot.post_generator import post_generator, TelegramPost
-from bot.moderator import moderator
-from bot.media_handler import media_handler
-from bot.database import db_manager
+import bot.news_collector
+import bot.news_analyzer
+import bot.post_generator
+import bot.moderator
+import bot.media_handler
+import bot.database
+from bot.post_generator import TelegramPost
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +92,7 @@ class NewsScheduler:
         while self.is_running:
             try:
                 # Очищаем раз в день
-                await db_manager.cleanup_old_posts()
+                await bot.database.db_manager.cleanup_old_posts()
                 await asyncio.sleep(86400)  # 24 часа
 
             except asyncio.CancelledError:
@@ -117,7 +118,7 @@ class NewsScheduler:
             return False
 
         # Проверяем, не превысили ли мы лимит постов за день
-        today_count = await db_manager.get_today_published_count()
+        today_count = await bot.database.db_manager.get_today_published_count()
         daily_limit = random.randint(bot.config.config.MIN_POSTS_PER_DAY, bot.config.config.MAX_POSTS_PER_DAY)
 
         if today_count >= daily_limit:
@@ -131,7 +132,7 @@ class NewsScheduler:
         try:
             # 1. Собираем новости
             logger.info("Собираем новости...")
-            news_list = await news_collector.collect_news()
+            news_list = await bot.news_collector.news_collector.collect_news()
 
             if not news_list:
                 logger.warning("Не удалось собрать новости")
@@ -139,7 +140,7 @@ class NewsScheduler:
 
             # 2. Анализируем и ранжируем новости
             logger.info("Анализируем новости...")
-            top_news = await news_analyzer.analyze_and_rank_news(news_list)
+            top_news = await bot.news_analyzer.news_analyzer.analyze_and_rank_news(news_list)
 
             if not top_news:
                 logger.warning("Не удалось выбрать топовые новости")
@@ -147,7 +148,7 @@ class NewsScheduler:
 
             # 3. Генерируем посты
             logger.info(f"Генерируем {len(top_news)} постов...")
-            posts = await post_generator.generate_multiple_posts(top_news)
+            posts = await bot.post_generator.post_generator.generate_multiple_posts(top_news)
 
             if not posts:
                 logger.warning("Не удалось сгенерировать посты")
@@ -182,7 +183,7 @@ class NewsScheduler:
         """
         try:
             # Отправляем на модерацию
-            moderation_result = await moderator.submit_for_moderation(post)
+            moderation_result = await bot.moderator.moderator.submit_for_moderation(post)
 
             if not moderation_result.approved:
                 logger.info("Пост отклонён модератором")
@@ -196,7 +197,7 @@ class NewsScheduler:
 
             if success:
                 # Сохраняем в БД
-                await db_manager.add_published_post(
+                await bot.database.db_manager.add_published_post(
                     url=post.news_url,
                     title=final_text[:200],  # Сохраняем начало поста как заголовок
                     source=post.source
@@ -225,7 +226,7 @@ class NewsScheduler:
             # Скачиваем и оптимизируем изображение если есть
             photo = None
             if image_url:
-                photo = await media_handler.download_and_optimize_image(image_url)
+                photo = await bot.media_handler.media_handler.download_and_optimize_image(image_url)
 
             # Публикуем
             if photo:
