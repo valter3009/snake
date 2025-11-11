@@ -17,13 +17,13 @@ from telegram.ext import (
 )
 
 import bot.config
-from bot.database import init_database, db_manager
-from bot.news_collector import init_news_collector, news_collector
-from bot.news_analyzer import init_news_analyzer
-from bot.post_generator import init_post_generator
-from bot.media_handler import init_media_handler, media_handler
-from bot.moderator import init_moderator, moderator
-from bot.scheduler import init_scheduler, scheduler
+import bot.database
+import bot.news_collector
+import bot.news_analyzer
+import bot.post_generator
+import bot.media_handler
+import bot.moderator
+import bot.scheduler
 
 # Настройка логирования
 logging.basicConfig(
@@ -49,22 +49,22 @@ class NewsBot:
         logger.info("Конфигурация загружена")
 
         # Инициализируем БД
-        init_database()
-        await db_manager.init_db()
+        bot.database.init_database()
+        await bot.database.db_manager.init_db()
         logger.info("База данных инициализирована")
 
         # Инициализируем компоненты
-        init_news_collector()
-        init_news_analyzer()
-        init_post_generator()
-        init_media_handler()
+        bot.news_collector.init_news_collector()
+        bot.news_analyzer.init_news_analyzer()
+        bot.post_generator.init_post_generator()
+        bot.media_handler.init_media_handler()
 
         # Создаем Telegram приложение
         self.application = Application.builder().token(bot.config.config.TELEGRAM_BOT_TOKEN).build()
 
         # Инициализируем модератор и планировщик
-        init_moderator(self.application.bot)
-        init_scheduler(self.application.bot)
+        bot.moderator.init_moderator(self.application.bot)
+        bot.scheduler.init_scheduler(self.application.bot)
 
         # Регистрируем handlers
         self._register_handlers()
@@ -105,8 +105,8 @@ class NewsBot:
         if update.effective_user.id != bot.config.config.TELEGRAM_ADMIN_ID:
             return
 
-        today_count = await db_manager.get_today_published_count()
-        is_running = scheduler.is_running
+        today_count = await bot.database.db_manager.get_today_published_count()
+        is_running = bot.scheduler.scheduler.is_running
 
         status_text = f"""📊 **Статус бота**
 
@@ -127,7 +127,7 @@ class NewsBot:
         await update.message.reply_text("🚀 Запускаю принудительную публикацию...")
 
         try:
-            await scheduler.publish_now()
+            await bot.scheduler.scheduler.publish_now()
             await update.message.reply_text("✅ Публикация завершена!")
         except Exception as e:
             logger.error(f"Ошибка принудительной публикации: {e}")
@@ -138,7 +138,7 @@ class NewsBot:
         query = update.callback_query
         await query.answer()
 
-        await moderator.handle_moderation_callback(
+        await bot.moderator.moderator.handle_moderation_callback(
             query_data=query.data,
             message_id=query.message.message_id,
             user_id=query.from_user.id
@@ -147,7 +147,7 @@ class NewsBot:
     async def _handle_edit_reply(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик ответов на сообщения (для редактирования постов)"""
         if update.message.reply_to_message:
-            await moderator.handle_edit_message(
+            await bot.moderator.moderator.handle_edit_message(
                 text=update.message.text,
                 reply_to_message_id=update.message.reply_to_message.message_id,
                 user_id=update.effective_user.id
@@ -161,7 +161,7 @@ class NewsBot:
         await self.initialize()
 
         # Запускаем планировщик
-        await scheduler.start()
+        await bot.scheduler.scheduler.start()
 
         # Запускаем Telegram bot polling
         await self.application.initialize()
@@ -187,8 +187,8 @@ class NewsBot:
         logger.info("Остановка бота...")
 
         # Останавливаем планировщик
-        if scheduler:
-            await scheduler.stop()
+        if bot.scheduler.scheduler:
+            await bot.scheduler.scheduler.stop()
 
         # Останавливаем polling
         if self.application:
@@ -200,12 +200,12 @@ class NewsBot:
                 logger.error(f"Ошибка при остановке Telegram приложения: {e}")
 
         # Закрываем соединения
-        if news_collector:
-            await news_collector.close()
-        if media_handler:
-            await media_handler.close()
-        if db_manager:
-            await db_manager.close()
+        if bot.news_collector.news_collector:
+            await bot.news_collector.news_collector.close()
+        if bot.media_handler.media_handler:
+            await bot.media_handler.media_handler.close()
+        if bot.database.db_manager:
+            await bot.database.db_manager.close()
 
         logger.info("Бот остановлен")
 
