@@ -117,6 +117,20 @@ def load_config() -> Config:
         'DATABASE_URL'
     ]
 
+    # Логируем статус каждой переменной
+    print("=" * 60)
+    print("ПРОВЕРКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ:")
+    print("=" * 60)
+    for var in required_vars:
+        value = os.getenv(var)
+        if value:
+            # Маскируем значение для безопасности
+            masked = value[:10] + "..." if len(value) > 10 else "***"
+            print(f"✅ {var}: {masked}")
+        else:
+            print(f"❌ {var}: НЕ НАЙДЕНА")
+    print("=" * 60)
+
     missing_vars = [var for var in required_vars if not os.getenv(var)]
     if missing_vars:
         raise ValueError(f"Отсутствуют обязательные переменные окружения: {', '.join(missing_vars)}")

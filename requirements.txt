@@ -16,6 +16,7 @@ aiohttp==3.10.10
 # База данных
 SQLAlchemy==2.0.36
 asyncpg==0.30.0
+greenlet==3.1.1
 alembic==1.13.3
 psycopg2-binary==2.9.10
 

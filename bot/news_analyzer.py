@@ -8,7 +8,7 @@ from difflib import SequenceMatcher
 
 from anthropic import AsyncAnthropic
 
-from bot.config import config
+import bot.config
 from bot.news_collector import NewsArticle
 
 logger = logging.getLogger(__name__)
@@ -18,7 +18,7 @@ class NewsAnalyzer:
     """Анализатор новостей с использованием Claude API"""
 
     def __init__(self):
-        self.client = AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
+        self.client = AsyncAnthropic(api_key=bot.config.config.ANTHROPIC_API_KEY)
 
     async def analyze_and_rank_news(self, news_list: List[NewsArticle]) -> List[NewsArticle]:
         """
@@ -44,7 +44,7 @@ class NewsAnalyzer:
         ranked_news = await self._rank_news_with_claude(grouped_news)
 
         # Возвращаем топ-N новостей
-        top_news = ranked_news[:config.TOP_NEWS_COUNT]
+        top_news = ranked_news[:bot.config.config.TOP_NEWS_COUNT]
         logger.info(f"Выбрано {len(top_news)} топовых новостей")
 
         return top_news
@@ -76,7 +76,7 @@ class NewsAnalyzer:
                     continue
 
                 similarity = self._calculate_similarity(news.title, other_news.title)
-                if similarity >= config.DUPLICATE_THRESHOLD / 100.0:
+                if similarity >= bot.config.config.DUPLICATE_THRESHOLD / 100.0:
                     similar_news.append(other_news)
                     processed_indices.add(j)
 

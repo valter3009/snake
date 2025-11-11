@@ -10,7 +10,7 @@ from io import BytesIO
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.error import TelegramError
 
-from bot.config import config
+import bot.config
 from bot.post_generator import TelegramPost
 from bot.media_handler import media_handler
 from bot.database import db_manager
@@ -65,7 +65,7 @@ class Moderator:
             # Отправляем сообщение админу
             if photo:
                 message = await self.bot.send_photo(
-                    chat_id=config.TELEGRAM_ADMIN_ID,
+                    chat_id=bot.config.config.TELEGRAM_ADMIN_ID,
                     photo=photo,
                     caption=f"📝 **НОВЫЙ ПОСТ НА МОДЕРАЦИЮ**\n\n{post.text}\n\n_Источник: {post.source}_",
                     reply_markup=keyboard,
@@ -73,7 +73,7 @@ class Moderator:
                 )
             else:
                 message = await self.bot.send_message(
-                    chat_id=config.TELEGRAM_ADMIN_ID,
+                    chat_id=bot.config.config.TELEGRAM_ADMIN_ID,
                     text=f"📝 **НОВЫЙ ПОСТ НА МОДЕРАЦИЮ**\n\n{post.text}\n\n_Источник: {post.source}_",
                     reply_markup=keyboard,
                     parse_mode='Markdown'
@@ -94,7 +94,7 @@ class Moderator:
             try:
                 await asyncio.wait_for(
                     moderation_event.wait(),
-                    timeout=config.MODERATION_TIMEOUT
+                    timeout=bot.config.config.MODERATION_TIMEOUT
                 )
                 logger.info("Получено решение модератора")
             except asyncio.TimeoutError:
@@ -124,7 +124,7 @@ class Moderator:
             user_id: ID пользователя
         """
         # Проверяем, что это админ
-        if user_id != config.TELEGRAM_ADMIN_ID:
+        if user_id != bot.config.config.TELEGRAM_ADMIN_ID:
             logger.warning(f"Попытка модерации от не-админа: {user_id}")
             return
 
@@ -143,7 +143,7 @@ class Moderator:
             # Обновляем сообщение
             try:
                 await self.bot.edit_message_caption(
-                    chat_id=config.TELEGRAM_ADMIN_ID,
+                    chat_id=bot.config.config.TELEGRAM_ADMIN_ID,
                     message_id=message_id,
                     caption=f"{pending['post'].text}\n\n✅ **ОДОБРЕНО**",
                     parse_mode='Markdown'
@@ -151,7 +151,7 @@ class Moderator:
             except TelegramError:
                 try:
                     await self.bot.edit_message_text(
-                        chat_id=config.TELEGRAM_ADMIN_ID,
+                        chat_id=bot.config.config.TELEGRAM_ADMIN_ID,
                         message_id=message_id,
                         text=f"{pending['post'].text}\n\n✅ **ОДОБРЕНО**",
                         parse_mode='Markdown'
@@ -167,7 +167,7 @@ class Moderator:
             # Обновляем сообщение
             try:
                 await self.bot.edit_message_caption(
-                    chat_id=config.TELEGRAM_ADMIN_ID,
+                    chat_id=bot.config.config.TELEGRAM_ADMIN_ID,
                     message_id=message_id,
                     caption=f"{pending['post'].text}\n\n❌ **ОТКЛОНЕНО**",
                     parse_mode='Markdown'
@@ -175,7 +175,7 @@ class Moderator:
             except TelegramError:
                 try:
                     await self.bot.edit_message_text(
-                        chat_id=config.TELEGRAM_ADMIN_ID,
+                        chat_id=bot.config.config.TELEGRAM_ADMIN_ID,
                         message_id=message_id,
                         text=f"{pending['post'].text}\n\n❌ **ОТКЛОНЕНО**",
                         parse_mode='Markdown'
@@ -187,7 +187,7 @@ class Moderator:
             logger.info("Запрошено редактирование поста")
             # Отправляем инструкцию по редактированию
             await self.bot.send_message(
-                chat_id=config.TELEGRAM_ADMIN_ID,
+                chat_id=bot.config.config.TELEGRAM_ADMIN_ID,
                 text="📝 Отправьте отредактированный текст поста в ответ на это сообщение.\n\n"
                      "Или нажмите /cancel для отмены редактирования.",
                 reply_to_message_id=message_id
@@ -204,7 +204,7 @@ class Moderator:
             user_id: ID пользователя
         """
         # Проверяем, что это админ
-        if user_id != config.TELEGRAM_ADMIN_ID:
+        if user_id != bot.config.config.TELEGRAM_ADMIN_ID:
             return
 
         # Ищем пост в ожидающих (может быть reply на оригинальное сообщение)
@@ -214,7 +214,7 @@ class Moderator:
 
         if text == "/cancel":
             await self.bot.send_message(
-                chat_id=config.TELEGRAM_ADMIN_ID,
+                chat_id=bot.config.config.TELEGRAM_ADMIN_ID,
                 text="❌ Редактирование отменено"
             )
             return
@@ -227,7 +227,7 @@ class Moderator:
         pending['event'].set()
 
         await self.bot.send_message(
-            chat_id=config.TELEGRAM_ADMIN_ID,
+            chat_id=bot.config.config.TELEGRAM_ADMIN_ID,
             text="✅ Изменения приняты, пост будет опубликован с новым текстом"
         )
 
