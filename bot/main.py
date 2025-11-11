@@ -45,7 +45,7 @@ class NewsBot:
         logger.info("Инициализация бота...")
 
         # Загружаем конфигурацию
-        bot.bot.config.config.init_config()
+        bot.config.init_config()
         logger.info("Конфигурация загружена")
 
         # Инициализируем БД
