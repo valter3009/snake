@@ -187,18 +187,25 @@ class NewsBot:
         logger.info("Остановка бота...")
 
         # Останавливаем планировщик
-        await scheduler.stop()
+        if scheduler:
+            await scheduler.stop()
 
         # Останавливаем polling
         if self.application:
-            await self.application.updater.stop()
-            await self.application.stop()
-            await self.application.shutdown()
+            try:
+                await self.application.updater.stop()
+                await self.application.stop()
+                await self.application.shutdown()
+            except Exception as e:
+                logger.error(f"Ошибка при остановке Telegram приложения: {e}")
 
         # Закрываем соединения
-        await news_collector.close()
-        await media_handler.close()
-        await db_manager.close()
+        if news_collector:
+            await news_collector.close()
+        if media_handler:
+            await media_handler.close()
+        if db_manager:
+            await db_manager.close()
 
         logger.info("Бот остановлен")
 

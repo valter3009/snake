@@ -6,6 +6,15 @@ from dataclasses import dataclass
 from typing import List
 import pytz
 
+# Загружаем .env только для локальной разработки (если файл существует)
+try:
+    from dotenv import load_dotenv
+    if os.path.exists('.env'):
+        load_dotenv()
+except ImportError:
+    # python-dotenv не установлен (например, на Railway)
+    pass
+
 
 @dataclass
 class Config:
