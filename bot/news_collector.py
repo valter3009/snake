@@ -10,7 +10,7 @@ import aiohttp
 import feedparser
 from dateutil import parser as date_parser
 
-from bot.config import config
+import bot.config
 from bot.database import db_manager
 
 logger = logging.getLogger(__name__)
@@ -118,11 +118,11 @@ class NewsCollector:
         try:
             session = await self._get_session()
 
-            for language in config.NEWS_API_LANGUAGES:
-                for category in config.NEWS_API_CATEGORIES:
+            for language in bot.config.config.NEWS_API_LANGUAGES:
+                for category in bot.config.config.NEWS_API_CATEGORIES:
                     url = "https://newsapi.org/v2/top-headlines"
                     params = {
-                        'apiKey': config.NEWS_API_KEY,
+                        'apiKey': bot.config.config.NEWS_API_KEY,
                         'language': language,
                         'category': category,
                         'pageSize': 20
@@ -178,7 +178,7 @@ class NewsCollector:
         try:
             session = await self._get_session()
 
-            for feed_url in config.RSS_FEEDS:
+            for feed_url in bot.config.config.RSS_FEEDS:
                 try:
                     # Определяем источник по URL
                     source = self._get_source_name(feed_url)
@@ -264,7 +264,7 @@ class NewsCollector:
         Returns:
             Отфильтрованный список
         """
-        cutoff_time = datetime.utcnow() - timedelta(hours=config.NEWS_MAX_AGE_HOURS)
+        cutoff_time = datetime.utcnow() - timedelta(hours=bot.config.config.NEWS_MAX_AGE_HOURS)
         fresh_news = [
             news for news in news_list
             if news.published_at >= cutoff_time

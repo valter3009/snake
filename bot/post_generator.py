@@ -8,7 +8,7 @@ from typing import Dict, Any
 
 from anthropic import AsyncAnthropic
 
-from bot.config import config
+import bot.config
 from bot.news_collector import NewsArticle
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ class PostGenerator:
     """Генератор постов для Telegram"""
 
     def __init__(self):
-        self.client = AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
+        self.client = AsyncAnthropic(api_key=bot.config.config.ANTHROPIC_API_KEY)
 
         # Форматы постов
         self.post_formats = [

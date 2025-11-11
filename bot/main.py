@@ -16,7 +16,7 @@ from telegram.ext import (
     ContextTypes
 )
 
-from bot.config import init_config, config
+import bot.config
 from bot.database import init_database, db_manager
 from bot.news_collector import init_news_collector, news_collector
 from bot.news_analyzer import init_news_analyzer
@@ -45,7 +45,7 @@ class NewsBot:
         logger.info("Инициализация бота...")
 
         # Загружаем конфигурацию
-        init_config()
+        bot.bot.config.config.init_config()
         logger.info("Конфигурация загружена")
 
         # Инициализируем БД
@@ -60,7 +60,7 @@ class NewsBot:
         init_media_handler()
 
         # Создаем Telegram приложение
-        self.application = Application.builder().token(config.TELEGRAM_BOT_TOKEN).build()
+        self.application = Application.builder().token(bot.config.config.TELEGRAM_BOT_TOKEN).build()
 
         # Инициализируем модератор и планировщик
         init_moderator(self.application.bot)
@@ -90,7 +90,7 @@ class NewsBot:
 
     async def _cmd_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /start"""
-        if update.effective_user.id == config.TELEGRAM_ADMIN_ID:
+        if update.effective_user.id == bot.config.config.TELEGRAM_ADMIN_ID:
             await update.message.reply_text(
                 "👋 Привет, админ!\n\n"
                 "Доступные команды:\n"
@@ -102,7 +102,7 @@ class NewsBot:
 
     async def _cmd_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /status"""
-        if update.effective_user.id != config.TELEGRAM_ADMIN_ID:
+        if update.effective_user.id != bot.config.config.TELEGRAM_ADMIN_ID:
             return
 
         today_count = await db_manager.get_today_published_count()
@@ -112,16 +112,16 @@ class NewsBot:
 
 Планировщик: {'🟢 Работает' if is_running else '🔴 Остановлен'}
 Постов сегодня: {today_count}
-Лимит постов: {config.MIN_POSTS_PER_DAY}-{config.MAX_POSTS_PER_DAY} в день
+Лимит постов: {bot.config.config.MIN_POSTS_PER_DAY}-{bot.config.config.MAX_POSTS_PER_DAY} в день
 
-Время публикации: {config.PUBLISH_START_HOUR}:00 - {config.PUBLISH_END_HOUR}:00 МСК
-Интервал сбора: {config.MIN_COLLECTION_INTERVAL}-{config.MAX_COLLECTION_INTERVAL} мин
+Время публикации: {bot.config.config.PUBLISH_START_HOUR}:00 - {bot.config.config.PUBLISH_END_HOUR}:00 МСК
+Интервал сбора: {bot.config.config.MIN_COLLECTION_INTERVAL}-{bot.config.config.MAX_COLLECTION_INTERVAL} мин
 """
         await update.message.reply_text(status_text, parse_mode='Markdown')
 
     async def _cmd_publish(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /publish (принудительная публикация)"""
-        if update.effective_user.id != config.TELEGRAM_ADMIN_ID:
+        if update.effective_user.id != bot.config.config.TELEGRAM_ADMIN_ID:
             return
 
         await update.message.reply_text("🚀 Запускаю принудительную публикацию...")
@@ -173,7 +173,7 @@ class NewsBot:
         # Уведомляем админа
         try:
             await self.application.bot.send_message(
-                chat_id=config.TELEGRAM_ADMIN_ID,
+                chat_id=bot.config.config.TELEGRAM_ADMIN_ID,
                 text="🤖 Бот запущен и готов к работе!"
             )
         except Exception as e:

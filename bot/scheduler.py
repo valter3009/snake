@@ -11,7 +11,7 @@ from io import BytesIO
 from telegram import Bot
 from telegram.error import TelegramError
 
-from bot.config import config
+import bot.config
 from bot.news_collector import news_collector
 from bot.news_analyzer import news_analyzer
 from bot.post_generator import post_generator, TelegramPost
@@ -73,8 +73,8 @@ class NewsScheduler:
 
                 # Рандомный интервал между сборами
                 interval = random.randint(
-                    config.MIN_COLLECTION_INTERVAL * 60,
-                    config.MAX_COLLECTION_INTERVAL * 60
+                    bot.config.config.MIN_COLLECTION_INTERVAL * 60,
+                    bot.config.config.MAX_COLLECTION_INTERVAL * 60
                 )
                 logger.info(f"Следующий сбор новостей через {interval // 60} минут")
                 await asyncio.sleep(interval)
@@ -108,17 +108,17 @@ class NewsScheduler:
             True если нужно собирать новости
         """
         # Проверяем текущее время (по МСК)
-        now = datetime.now(config.TIMEZONE)
+        now = datetime.now(bot.config.config.TIMEZONE)
         current_hour = now.hour
 
         # Проверяем, что время в диапазоне публикаций
-        if current_hour < config.PUBLISH_START_HOUR or current_hour >= config.PUBLISH_END_HOUR:
-            logger.info(f"Время {current_hour}:00 вне диапазона публикаций ({config.PUBLISH_START_HOUR}:00-{config.PUBLISH_END_HOUR}:00)")
+        if current_hour < bot.config.config.PUBLISH_START_HOUR or current_hour >= bot.config.config.PUBLISH_END_HOUR:
+            logger.info(f"Время {current_hour}:00 вне диапазона публикаций ({bot.config.config.PUBLISH_START_HOUR}:00-{bot.config.config.PUBLISH_END_HOUR}:00)")
             return False
 
         # Проверяем, не превысили ли мы лимит постов за день
         today_count = await db_manager.get_today_published_count()
-        daily_limit = random.randint(config.MIN_POSTS_PER_DAY, config.MAX_POSTS_PER_DAY)
+        daily_limit = random.randint(bot.config.config.MIN_POSTS_PER_DAY, bot.config.config.MAX_POSTS_PER_DAY)
 
         if today_count >= daily_limit:
             logger.info(f"Достигнут дневной лимит постов: {today_count}/{daily_limit}")
@@ -230,14 +230,14 @@ class NewsScheduler:
             # Публикуем
             if photo:
                 await self.bot.send_photo(
-                    chat_id=config.TELEGRAM_CHANNEL_ID,
+                    chat_id=bot.config.config.TELEGRAM_CHANNEL_ID,
                     photo=photo,
                     caption=text,
                     parse_mode='Markdown'
                 )
             else:
                 await self.bot.send_message(
-                    chat_id=config.TELEGRAM_CHANNEL_ID,
+                    chat_id=bot.config.config.TELEGRAM_CHANNEL_ID,
                     text=text,
                     parse_mode='Markdown'
                 )

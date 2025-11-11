@@ -12,7 +12,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.future import select
 from sqlalchemy.orm import sessionmaker
 
-from bot.config import config
+import bot.config
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +182,7 @@ class DatabaseManager:
     async def cleanup_old_posts(self):
         """Очистка старых постов (старше POSTS_RETENTION_DAYS)"""
         async with self.get_session() as session:
-            cutoff_date = datetime.utcnow() - timedelta(days=config.POSTS_RETENTION_DAYS)
+            cutoff_date = datetime.utcnow() - timedelta(days=bot.config.config.POSTS_RETENTION_DAYS)
             result = await session.execute(
                 select(PublishedPost).where(PublishedPost.published_at < cutoff_date)
             )
@@ -269,6 +269,6 @@ def init_database(database_url: str = None) -> DatabaseManager:
     """
     global db_manager
     if database_url is None:
-        database_url = config.DATABASE_URL
+        database_url = bot.config.config.DATABASE_URL
     db_manager = DatabaseManager(database_url)
     return db_manager
