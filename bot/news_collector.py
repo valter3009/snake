@@ -28,6 +28,7 @@ class NewsArticle:
         description: Optional[str] = None,
         content: Optional[str] = None,
         image_url: Optional[str] = None,
+        image_urls: Optional[List[str]] = None,
         author: Optional[str] = None
     ):
         self.title = title
@@ -37,6 +38,7 @@ class NewsArticle:
         self.description = description or ""
         self.content = content or ""
         self.image_url = image_url
+        self.image_urls = image_urls or ([image_url] if image_url else [])
         self.author = author
 
     def to_dict(self) -> Dict[str, Any]:
@@ -49,11 +51,12 @@ class NewsArticle:
             'description': self.description,
             'content': self.content,
             'image_url': self.image_url,
+            'image_urls': self.image_urls,
             'author': self.author
         }
 
     def __repr__(self):
-        return f"<NewsArticle(title='{self.title[:50]}...', source='{self.source}')>"
+        return f"<NewsArticle(title='{self.title[:50]}...', source='{self.source}', images={len(self.image_urls)})>"
 
 
 class NewsCollector:
@@ -198,12 +201,27 @@ class NewsCollector:
                                     else:
                                         published_at = datetime.now(timezone.utc)
 
-                                    # Получаем изображение
-                                    image_url = None
+                                    # Получаем ВСЕ изображения
+                                    image_urls = []
+
+                                    # Собираем из media_content
                                     if hasattr(entry, 'media_content') and entry.media_content:
-                                        image_url = entry.media_content[0].get('url')
-                                    elif hasattr(entry, 'enclosures') and entry.enclosures:
-                                        image_url = entry.enclosures[0].get('href')
+                                        for media in entry.media_content:
+                                            url = media.get('url')
+                                            if url and url not in image_urls:
+                                                image_urls.append(url)
+
+                                    # Собираем из enclosures
+                                    if hasattr(entry, 'enclosures') and entry.enclosures:
+                                        for enc in entry.enclosures:
+                                            url = enc.get('href')
+                                            # Проверяем что это изображение
+                                            if url and url not in image_urls and any(ext in url.lower() for ext in ['.jpg', '.jpeg', '.png', '.webp', '.gif']):
+                                                image_urls.append(url)
+
+                                    # Ограничиваем до 4 изображений
+                                    image_urls = image_urls[:4]
+                                    image_url = image_urls[0] if image_urls else None
 
                                     news = NewsArticle(
                                         title=entry.title,
@@ -213,6 +231,7 @@ class NewsCollector:
                                         description=entry.get('summary', ''),
                                         content=entry.get('content', [{}])[0].get('value', ''),
                                         image_url=image_url,
+                                        image_urls=image_urls,
                                         author=entry.get('author')
                                     )
                                     news_list.append(news)

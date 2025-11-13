@@ -4,7 +4,8 @@
 import logging
 import json
 import random
-from typing import Dict, Any
+import html
+from typing import Dict, Any, List
 
 from anthropic import AsyncAnthropic
 
@@ -17,14 +18,15 @@ logger = logging.getLogger(__name__)
 class TelegramPost:
     """Класс для представления поста в Telegram"""
 
-    def __init__(self, text: str, image_url: str = None, news_url: str = None, source: str = None):
+    def __init__(self, text: str, image_urls: List[str] = None, news_url: str = None, source: str = None):
         self.text = text
-        self.image_url = image_url
+        self.image_urls = image_urls or []  # Теперь список изображений
+        self.image_url = image_urls[0] if image_urls else None  # Для обратной совместимости
         self.news_url = news_url
         self.source = source
 
     def __repr__(self):
-        return f"<TelegramPost(text_length={len(self.text)}, has_image={bool(self.image_url)})>"
+        return f"<TelegramPost(text_length={len(self.text)}, images_count={len(self.image_urls)})>"
 
 
 class PostGenerator:
@@ -90,15 +92,22 @@ class PostGenerator:
         # Генерируем пост через Claude
         post_text = await self._generate_with_claude(news, post_format, post_length)
 
+        # Собираем все доступные изображения
+        image_urls = []
+        if hasattr(news, 'image_urls') and news.image_urls:
+            image_urls = news.image_urls[:4]  # Максимум 4 изображения для медиагруппы
+        elif news.image_url:
+            image_urls = [news.image_url]
+
         # Создаем объект поста
         post = TelegramPost(
             text=post_text,
-            image_url=news.image_url,
+            image_urls=image_urls,
             news_url=news.url,
             source=news.source
         )
 
-        logger.info(f"Пост сгенерирован: {len(post_text)} символов")
+        logger.info(f"Пост сгенерирован: {len(post_text)} символов, {len(image_urls)} изображений")
         return post
 
     def _weighted_choice(self, choices: list) -> dict:
@@ -143,31 +152,38 @@ class PostGenerator:
         # Определяем, использовать ли эмодзи
         use_emoji = random.choice([True, True, False])  # 66% вероятность
 
-        prompt = f"""Ты - автор популярного новостного Telegram-канала. Напиши пост о следующей новости.
+        prompt = f"""Ты - автор инсайдерского Telegram-канала "Insider alert🚨". Напиши короткий живой пост о новости.
 
 НОВОСТЬ:
 Заголовок: {news.title}
 Описание: {news.description}
 Контент: {news.content[:500] if news.content else ''}
-Источник: {news.source}
 
 ТРЕБОВАНИЯ:
-1. Формат: {post_format['template']}
-2. Длина: {post_length['description']}
-3. Tone: нейтральный + легкий юмор (где уместно)
-4. Эмодзи: {"1-2 на пост" if use_emoji else "БЕЗ эмодзи"}
-5. Markdown: используй **жирный** и *курсив* для акцентов
-6. Стиль: как от реального человека, НЕ шаблонно
-7. НЕ добавляй ссылки на источники в текст
+1. Длина: {post_length['description']} (МАКСИМУМ!)
+2. Стиль: как будто пишет реальный человек, заметивший что-то важное
+3. Эмодзи: {"1-2 символа максимум" if use_emoji else "без эмодзи"}
+4. Markdown: используй **жирный** для акцентов
+5. БЕЗ шаблонных фраз типа "новость дня", "сегодня стало известно", "по последним данным"
+6. БЕЗ вступлений и заголовков - сразу к сути
 
-ВАЖНО:
-- Каждый пост должен быть УНИКАЛЬНЫМ
-- Варьируй структуру и формулировки
-- Пиши живым языком
-- Если новость серьёзная - без юмора
-- Если новость интересная - добавь личное мнение
+КАК ПИСАТЬ:
+- Начинай прямо с факта или инсайта
+- Пиши коротко и ёмко
+- Используй разговорный язык
+- Если есть цифры - обязательно укажи
+- Если скандал или противоречие - покажи обе стороны
+- НЕ добавляй свои комментарии в конце
 
-Верни ТОЛЬКО текст поста, без пояснений."""
+ЗАПРЕЩЕНО использовать:
+❌ "Новость дня"
+❌ "Стало известно"
+❌ "По последним данным"
+❌ "Сегодня"
+❌ "Недавно"
+❌ Любые клише
+
+Верни ТОЛЬКО текст поста, ничего больше."""
 
         try:
             response = await self.client.messages.create(
@@ -184,6 +200,19 @@ class PostGenerator:
             # Убираем возможные кавычки в начале и конце
             if post_text.startswith('"') and post_text.endswith('"'):
                 post_text = post_text[1:-1]
+
+            # Очищаем HTML entities (lquo, rquo и т.д.)
+            post_text = html.unescape(post_text)
+
+            # Заменяем проблемные символы
+            post_text = post_text.replace('&lquo;', '"').replace('&rquo;', '"')
+            post_text = post_text.replace('&ldquo;', '"').replace('&rdquo;', '"')
+            post_text = post_text.replace('&nbsp;', ' ')
+            post_text = post_text.replace('&mdash;', '—').replace('&ndash;', '–')
+
+            # Добавляем ссылку на канал внизу
+            channel_link = "\n\n📢 @InsidealeRT"
+            post_text = post_text + channel_link
 
             return post_text
 

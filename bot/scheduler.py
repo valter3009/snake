@@ -192,8 +192,8 @@ class NewsScheduler:
             # Используем отредактированный текст если есть
             final_text = moderation_result.edited_text or post.text
 
-            # Публикуем в канал
-            success = await self._publish_to_channel(final_text, post.image_url)
+            # Публикуем в канал (передаём список изображений)
+            success = await self._publish_to_channel(final_text, post.image_urls)
 
             if success:
                 # Сохраняем в БД
@@ -211,39 +211,77 @@ class NewsScheduler:
             logger.error(f"Ошибка публикации поста: {e}")
             return False
 
-    async def _publish_to_channel(self, text: str, image_url: Optional[str] = None) -> bool:
+    async def _publish_to_channel(self, text: str, image_urls: Optional[list] = None) -> bool:
         """
         Публикация поста в канал
 
         Args:
             text: Текст поста
-            image_url: URL изображения (опционально)
+            image_urls: Список URL изображений (опционально)
 
         Returns:
             True если публикация успешна
         """
         try:
-            # Скачиваем и оптимизируем изображение если есть
-            photo = None
-            if image_url:
-                photo = await bot.media_handler.media_handler.download_and_optimize_image(image_url)
+            from telegram import InputMediaPhoto
 
-            # Публикуем
-            if photo:
-                await self.bot.send_photo(
-                    chat_id=bot.config.config.TELEGRAM_CHANNEL_ID,
-                    photo=photo,
-                    caption=text,
-                    parse_mode='Markdown'
-                )
-            else:
+            if not image_urls:
+                # Публикуем текстовый пост
                 await self.bot.send_message(
                     chat_id=bot.config.config.TELEGRAM_CHANNEL_ID,
                     text=text,
                     parse_mode='Markdown'
                 )
+                logger.info("Текстовый пост опубликован")
+                return True
 
-            logger.info("Пост опубликован в канал")
+            # Скачиваем и оптимизируем все изображения
+            photos = []
+            for url in image_urls[:4]:  # Максимум 4 изображения
+                try:
+                    photo = await bot.media_handler.media_handler.download_and_optimize_image(url)
+                    if photo:
+                        photos.append(photo)
+                except Exception as e:
+                    logger.warning(f"Ошибка загрузки изображения {url}: {e}")
+
+            if not photos:
+                # Если не удалось загрузить ни одно фото, публикуем текст
+                await self.bot.send_message(
+                    chat_id=bot.config.config.TELEGRAM_CHANNEL_ID,
+                    text=text,
+                    parse_mode='Markdown'
+                )
+                logger.info("Пост опубликован без изображений")
+                return True
+
+            # Если одно изображение - обычный send_photo
+            if len(photos) == 1:
+                await self.bot.send_photo(
+                    chat_id=bot.config.config.TELEGRAM_CHANNEL_ID,
+                    photo=photos[0],
+                    caption=text,
+                    parse_mode='Markdown'
+                )
+                logger.info("Пост с 1 изображением опубликован")
+            else:
+                # Если несколько изображений - медиа-группа
+                media_group = []
+                for i, photo in enumerate(photos):
+                    # Текст добавляем только к первому фото
+                    caption = text if i == 0 else None
+                    media_group.append(InputMediaPhoto(
+                        media=photo,
+                        caption=caption,
+                        parse_mode='Markdown' if caption else None
+                    ))
+
+                await self.bot.send_media_group(
+                    chat_id=bot.config.config.TELEGRAM_CHANNEL_ID,
+                    media=media_group
+                )
+                logger.info(f"Медиа-группа из {len(photos)} изображений опубликована")
+
             return True
 
         except TelegramError as e:

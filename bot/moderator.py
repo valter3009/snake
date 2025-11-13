@@ -32,6 +32,7 @@ class Moderator:
     def __init__(self, bot: Bot):
         self.bot = bot
         self.pending_posts: Dict[int, Dict[str, Any]] = {}  # message_id -> {post, event, result}
+        self.edit_instructions: Dict[int, int] = {}  # instruction_message_id -> original_message_id
 
     async def submit_for_moderation(self, post: TelegramPost) -> ModerationResult:
         """
@@ -186,12 +187,14 @@ class Moderator:
         elif query_data == "edit":
             logger.info("Запрошено редактирование поста")
             # Отправляем инструкцию по редактированию
-            await self.bot.send_message(
+            instruction_msg = await self.bot.send_message(
                 chat_id=bot.config.config.TELEGRAM_ADMIN_ID,
                 text="📝 Отправьте отредактированный текст поста в ответ на это сообщение.\n\n"
                      "Или нажмите /cancel для отмены редактирования.",
                 reply_to_message_id=message_id
             )
+            # Сохраняем связь instruction_message_id -> original_message_id
+            self.edit_instructions[instruction_msg.message_id] = message_id
             # Редактирование будет обработано в handler текстовых сообщений
 
     async def handle_edit_message(self, text: str, reply_to_message_id: int, user_id: int):
@@ -207,24 +210,36 @@ class Moderator:
         if user_id != bot.config.config.TELEGRAM_ADMIN_ID:
             return
 
-        # Ищем пост в ожидающих (может быть reply на оригинальное сообщение)
-        if reply_to_message_id not in self.pending_posts:
-            logger.warning(f"Пост {reply_to_message_id} не найден для редактирования")
+        # Находим оригинальный message_id через edit_instructions
+        original_message_id = self.edit_instructions.get(reply_to_message_id)
+
+        # Если нет в edit_instructions, возможно это прямой ответ на оригинальный пост
+        if not original_message_id:
+            original_message_id = reply_to_message_id
+
+        # Ищем пост в ожидающих
+        if original_message_id not in self.pending_posts:
+            logger.warning(f"Пост {original_message_id} не найден для редактирования")
             return
 
         if text == "/cancel":
+            # Очищаем edit_instructions
+            self.edit_instructions.pop(reply_to_message_id, None)
             await self.bot.send_message(
                 chat_id=bot.config.config.TELEGRAM_ADMIN_ID,
                 text="❌ Редактирование отменено"
             )
             return
 
-        pending = self.pending_posts[reply_to_message_id]
+        pending = self.pending_posts[original_message_id]
 
         logger.info("Пост отредактирован модератором")
         pending['result']['approved'] = True
         pending['result']['edited_text'] = text
         pending['event'].set()
+
+        # Очищаем edit_instructions
+        self.edit_instructions.pop(reply_to_message_id, None)
 
         await self.bot.send_message(
             chat_id=bot.config.config.TELEGRAM_ADMIN_ID,

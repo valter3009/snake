@@ -45,8 +45,8 @@ class Config:
     PUBLISH_END_HOUR: int = 23   # 23:00 МСК
 
     # Настройки публикации
-    MIN_POSTS_PER_DAY: int = 4
-    MAX_POSTS_PER_DAY: int = 10
+    MIN_POSTS_PER_DAY: int = 25
+    MAX_POSTS_PER_DAY: int = 30
 
     # Интервалы сбора новостей (в минутах)
     MIN_COLLECTION_INTERVAL: int = 30
