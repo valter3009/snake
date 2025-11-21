@@ -8,6 +8,8 @@ from telegram.ext import (
     Application,
     CommandHandler,
     CallbackQueryHandler,
+    MessageHandler,
+    filters,
     ContextTypes
 )
 
@@ -29,53 +31,6 @@ logger = setup_logger("bot.main", "INFO")
 
 # Глобальные компоненты
 scheduler = None
-
-
-async def publish_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик команды /publish - принудительная публикация"""
-    global scheduler
-
-    user = update.effective_user
-    handlers = context.bot_data.get('handlers')
-
-    if not handlers or not handlers.is_admin(user.id):
-        await update.message.reply_text("⛔ Доступ запрещен")
-        return
-
-    await update.message.reply_text("🚀 Запускаю принудительную публикацию...")
-
-    try:
-        # Запускаем принудительную публикацию
-        stats = await scheduler.force_publish()
-
-        # Формируем детальный отчет
-        by_source_text = '\n'.join([
-            f"   • {source}: {count}"
-            for source, count in stats.get('by_source', {}).items()
-        ])
-
-        result_text = f"""🚀 РЕЗУЛЬТАТ ПУБЛИКАЦИИ:
-
-📰 Собрано новостей: {stats.get('collected', 0)}
-{by_source_text if by_source_text else ''}
-
-🤖 Отобрано Claude AI: {stats.get('analyzed', 0)}
-   • Анализ: ✅ завершен
-
-✍️ Сгенерировано постов: {stats.get('generated', 0)}
-
-📤 Отправлено на модерацию: {stats.get('sent_to_moderation', 0)}
-✅ Опубликовано: {stats.get('published', 0)}
-
-{'⚠️ Ошибки: ' + str(len(stats.get('errors', []))) if stats.get('errors') else '✅ Без ошибок'}
-
-🎉 Публикация завершена!"""
-
-        await update.message.reply_text(result_text)
-
-    except Exception as e:
-        logger.error(f"❌ Ошибка принудительной публикации: {e}")
-        await update.message.reply_text(f"❌ Ошибка: {e}")
 
 
 async def moderation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -219,10 +174,25 @@ async def main():
         telegram_app.add_handler(CommandHandler("status", handlers.status_command))
         telegram_app.add_handler(CommandHandler("stats", handlers.stats_command))
         telegram_app.add_handler(CommandHandler("health", handlers.health_command))
-        telegram_app.add_handler(CommandHandler("publish", publish_command))
+        telegram_app.add_handler(CommandHandler("collect", handlers.collect_command))
+        telegram_app.add_handler(CommandHandler("publish", handlers.publish_command))
+        telegram_app.add_handler(CommandHandler("publish_now", handlers.publish_now_command))
 
-        # Callback handlers
-        telegram_app.add_handler(CallbackQueryHandler(moderation_callback))
+        # Callback handler для модерации
+        telegram_app.add_handler(CallbackQueryHandler(
+            moderation_callback,
+            pattern=r'^(approve|reject|edit)_'
+        ))
+
+        # Message handlers для фото и текста (только для админа)
+        telegram_app.add_handler(MessageHandler(
+            filters.PHOTO & filters.User(user_id=config.TELEGRAM_ADMIN_ID),
+            handlers.handle_photo
+        ))
+        telegram_app.add_handler(MessageHandler(
+            filters.TEXT & ~filters.COMMAND & filters.User(user_id=config.TELEGRAM_ADMIN_ID),
+            handlers.handle_text
+        ))
 
         # Error handler
         telegram_app.add_error_handler(handlers.error_handler)
@@ -238,16 +208,36 @@ async def main():
         # 5. Запускаем бота
         logger.info("🚀 Запуск бота...")
 
-        # Post init и shutdown hooks
-        telegram_app.post_init = post_init
-        telegram_app.post_shutdown = post_shutdown
+        # Инициализируем приложение
+        await telegram_app.initialize()
+        await telegram_app.start()
+
+        # Вызываем post_init
+        await post_init(telegram_app)
 
         # Запускаем polling
         logger.info("=" * 60)
         logger.info("✅ БОТ УСПЕШНО ЗАПУЩЕН И РАБОТАЕТ!")
         logger.info("=" * 60)
 
-        await telegram_app.run_polling(allowed_updates=Update.ALL_TYPES)
+        await telegram_app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+
+        # Ждем сигнала завершения
+        stop_signals = (signal.SIGINT, signal.SIGTERM)
+        loop = asyncio.get_running_loop()
+
+        # Создаем future для ожидания завершения
+        stop_event = asyncio.Event()
+
+        def signal_handler(signum, frame):
+            logger.info(f"⚠️ Получен сигнал {signum}")
+            stop_event.set()
+
+        for sig in stop_signals:
+            signal.signal(sig, signal_handler)
+
+        # Ждем сигнала завершения
+        await stop_event.wait()
 
     except KeyboardInterrupt:
         logger.info("⚠️ Получен сигнал прерывания (Ctrl+C)")
@@ -257,15 +247,19 @@ async def main():
     finally:
         logger.info("👋 Завершение работы бота")
 
+        # Graceful shutdown
+        try:
+            await post_shutdown(telegram_app)
+            await telegram_app.updater.stop()
+            await telegram_app.stop()
+            await telegram_app.shutdown()
+        except Exception as e:
+            logger.error(f"❌ Ошибка при shutdown: {e}")
+
 
 if __name__ == "__main__":
-    # Обработка сигналов для graceful shutdown
-    loop = asyncio.get_event_loop()
-
     # Запускаем основную функцию
     try:
-        loop.run_until_complete(main())
+        asyncio.run(main())
     except KeyboardInterrupt:
         logger.info("⚠️ Прерывание работы")
-    finally:
-        loop.close()

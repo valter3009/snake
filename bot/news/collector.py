@@ -2,7 +2,7 @@
 Сбор новостей из различных источников
 """
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional
 import feedparser
 import aiohttp
@@ -177,16 +177,20 @@ class NewsCollector:
             date_str: Строка с датой
 
         Returns:
-            datetime объект
+            datetime объект (timezone-aware UTC)
         """
         if not date_str:
-            return datetime.utcnow()
+            return datetime.now(timezone.utc)
 
         try:
             from dateutil import parser
-            return parser.parse(date_str)
+            parsed = parser.parse(date_str)
+            # Если дата без timezone, добавляем UTC
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed
         except Exception:
-            return datetime.utcnow()
+            return datetime.now(timezone.utc)
 
     def _remove_duplicates(self, news: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
@@ -219,12 +223,17 @@ class NewsCollector:
         Returns:
             Список свежих новостей
         """
-        cutoff_time = datetime.utcnow() - timedelta(hours=self.max_age_hours)
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=self.max_age_hours)
         recent_news = []
 
         for item in news:
             published_at = item.get('published_at')
-            if published_at and published_at > cutoff_time:
-                recent_news.append(item)
+            if published_at:
+                # Убеждаемся что дата имеет timezone
+                if published_at.tzinfo is None:
+                    published_at = published_at.replace(tzinfo=timezone.utc)
+
+                if published_at > cutoff_time:
+                    recent_news.append(item)
 
         return recent_news
