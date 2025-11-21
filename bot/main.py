@@ -116,37 +116,6 @@ async def moderation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.error(f"❌ Ошибка обработки callback модерации: {e}")
 
 
-async def post_init(application: Application):
-    """Инициализация после запуска бота"""
-    global scheduler
-
-    logger.info("🔧 Запуск post_init...")
-
-    # Запускаем планировщик в фоне
-    if scheduler:
-        asyncio.create_task(scheduler.start())
-        logger.info("✅ Планировщик запущен в фоне")
-
-
-async def post_shutdown(application: Application):
-    """Graceful shutdown"""
-    global scheduler
-
-    logger.info("🛑 Начинаю graceful shutdown...")
-
-    # Останавливаем планировщик
-    if scheduler:
-        await scheduler.stop()
-        logger.info("✅ Планировщик остановлен")
-
-    # Закрываем БД
-    if db_manager:
-        await db_manager.close()
-        logger.info("✅ База данных закрыта")
-
-    logger.info("✅ Shutdown завершен")
-
-
 async def main():
     """Главная функция"""
     global scheduler
@@ -154,6 +123,9 @@ async def main():
     logger.info("=" * 60)
     logger.info("🤖 ЗАПУСК TELEGRAM БОТА НОВОСТНОЙ АНАЛИТИКИ")
     logger.info("=" * 60)
+
+    # Инициализируем переменную для graceful shutdown
+    telegram_app = None
 
     try:
         # 1. Загружаем конфигурацию
@@ -238,16 +210,23 @@ async def main():
         # 5. Запускаем бота
         logger.info("🚀 Запуск бота...")
 
-        # Post init и shutdown hooks
-        telegram_app.post_init = post_init
-        telegram_app.post_shutdown = post_shutdown
+        # Инициализация application
+        await telegram_app.initialize()
+        await telegram_app.start()
+        await telegram_app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
 
-        # Запускаем polling
+        # Запускаем scheduler в фоне
+        asyncio.create_task(scheduler.start())
+
         logger.info("=" * 60)
         logger.info("✅ БОТ УСПЕШНО ЗАПУЩЕН И РАБОТАЕТ!")
         logger.info("=" * 60)
 
-        await telegram_app.run_polling(allowed_updates=Update.ALL_TYPES)
+        # Создаем событие для остановки
+        stop_signal = asyncio.Event()
+
+        # Ожидаем бесконечно (пока не будет прерывания)
+        await stop_signal.wait()
 
     except KeyboardInterrupt:
         logger.info("⚠️ Получен сигнал прерывания (Ctrl+C)")
@@ -256,6 +235,35 @@ async def main():
         raise
     finally:
         logger.info("👋 Завершение работы бота")
+
+        # Graceful shutdown
+        try:
+            if telegram_app is not None:
+                logger.info("🛑 Остановка Telegram бота...")
+                await telegram_app.updater.stop()
+                await telegram_app.stop()
+                await telegram_app.shutdown()
+                logger.info("✅ Telegram бот остановлен")
+        except Exception as e:
+            logger.error(f"❌ Ошибка при остановке бота: {e}")
+
+        # Останавливаем scheduler
+        try:
+            if scheduler is not None:
+                logger.info("🛑 Остановка планировщика...")
+                await scheduler.stop()
+                logger.info("✅ Планировщик остановлен")
+        except Exception as e:
+            logger.error(f"❌ Ошибка при остановке планировщика: {e}")
+
+        # Закрываем БД
+        if db_manager:
+            try:
+                logger.info("🛑 Закрытие базы данных...")
+                await db_manager.close()
+                logger.info("✅ База данных закрыта")
+            except Exception as e:
+                logger.error(f"❌ Ошибка при закрытии БД: {e}")
 
 
 if __name__ == "__main__":
