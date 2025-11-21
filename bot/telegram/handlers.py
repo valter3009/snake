@@ -41,8 +41,8 @@ class BotHandlers:
 Доступные команды:
 /start - Показать это сообщение
 /status - Статус бота и статистика
-/collect - Собрать новости и создать публикацию вручную
-/publish - Принудительная автоматическая публикация
+/collect - Автоматическая публикация (сбор, анализ, генерация)
+/publish - Опубликовать свой текст и медиа
 /stats - Детальная статистика
 /health - Проверка здоровья системы
 
@@ -137,222 +137,161 @@ class BotHandlers:
         logger.info(f"🏥 Команда /health от пользователя {user.id}")
 
     async def collect_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик команды /collect - ручной сбор и публикация"""
+        """Обработчик команды /collect - автоматическая публикация"""
         user = update.effective_user
 
         if not self.is_admin(user.id):
             await update.message.reply_text("⛔ Доступ запрещен")
             return
 
-        await update.message.reply_text("📰 Собираю новости...")
+        await update.message.reply_text("🚀 Запускаю автоматическую публикацию...")
         logger.info(f"📰 Команда /collect от пользователя {user.id}")
 
+        # Эта команда будет обрабатываться в main.py как publish_command
+        # Просто вызываем scheduler напрямую
+        scheduler = context.bot_data.get('scheduler')
+
+        if not scheduler:
+            await update.message.reply_text("❌ Планировщик недоступен")
+            return
+
         try:
-            # Получаем компоненты из bot_data
-            scheduler = context.bot_data.get('scheduler')
-            news_collector = scheduler.news_collector if scheduler else None
+            stats = await scheduler.force_publish()
 
-            if not news_collector:
-                await update.message.reply_text("❌ Сборщик новостей недоступен")
-                return
+            by_source_text = '\n'.join([
+                f"   • {source}: {count}"
+                for source, count in stats.get('by_source', {}).items()
+            ])
 
-            # Собираем новости
-            news_list = await news_collector.collect_all_news()
+            result_text = f"""🚀 РЕЗУЛЬТАТ ПУБЛИКАЦИИ:
 
-            if not news_list:
-                await update.message.reply_text("❌ Не удалось собрать новости")
-                return
+📰 Собрано новостей: {stats.get('collected', 0)}
+{by_source_text if by_source_text else ''}
 
-            # Сохраняем новости в context для дальнейшего использования
-            context.user_data['collected_news'] = news_list
+🤖 Отобрано Claude AI: {stats.get('analyzed', 0)}
+✍️ Сгенерировано постов: {stats.get('generated', 0)}
+📤 Отправлено на модерацию: {stats.get('sent_to_moderation', 0)}
+✅ Опубликовано: {stats.get('published', 0)}
 
-            # Формируем список новостей с кнопками
-            message_text = f"📰 Собрано {len(news_list)} новостей\n\nВыберите новость для публикации:"
+{'⚠️ Ошибки: ' + str(len(stats.get('errors', []))) if stats.get('errors') else '✅ Без ошибок'}
 
-            # Показываем первые 10 новостей с кнопками
-            keyboard = []
-            for i, news in enumerate(news_list[:10], 1):
-                title = news.get('title', 'Без заголовка')[:60]
-                source = news.get('source', 'Unknown')
-                keyboard.append([InlineKeyboardButton(
-                    f"{i}. [{source}] {title}...",
-                    callback_data=f"collect_news_{i-1}"
-                )])
+🎉 Публикация завершена!"""
 
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_text(message_text, reply_markup=reply_markup)
+            await update.message.reply_text(result_text)
 
         except Exception as e:
-            logger.error(f"❌ Ошибка при сборе новостей: {e}")
+            logger.error(f"❌ Ошибка автоматической публикации: {e}")
             await update.message.reply_text(f"❌ Ошибка: {e}")
 
-    async def collect_news_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик выбора новости для публикации"""
-        query = update.callback_query
-        await query.answer()
+    async def publish_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды /publish - ручная публикация своего контента"""
+        user = update.effective_user
 
-        user = query.from_user
         if not self.is_admin(user.id):
-            await query.edit_message_text("⛔ Доступ запрещен")
+            await update.message.reply_text("⛔ Доступ запрещен")
+            return
+
+        logger.info(f"📤 Команда /publish от пользователя {user.id}")
+
+        context.user_data['waiting_for_publish_text'] = True
+
+        await update.message.reply_text(
+            "📝 Отправьте текст для публикации\n\n"
+            "После этого можете отправить изображение (опционально)\n"
+            "Затем используйте команду /publish_now для публикации"
+        )
+
+    async def publish_now_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Публикация подготовленного контента"""
+        user = update.effective_user
+
+        if not self.is_admin(user.id):
+            await update.message.reply_text("⛔ Доступ запрещен")
+            return
+
+        custom_text = context.user_data.get('publish_text')
+        media_file_id = context.user_data.get('publish_media_id')
+
+        if not custom_text:
+            await update.message.reply_text("❌ Сначала отправьте текст для публикации")
             return
 
         try:
-            # Получаем индекс выбранной новости
-            news_index = int(query.data.split('_')[-1])
-            news_list = context.user_data.get('collected_news', [])
-
-            if news_index >= len(news_list):
-                await query.edit_message_text("❌ Новость не найдена")
+            publisher = context.bot_data.get('publisher')
+            if not publisher:
+                await update.message.reply_text("❌ Издатель недоступен")
                 return
 
-            selected_news = news_list[news_index]
-            context.user_data['selected_news'] = selected_news
+            await update.message.reply_text("📤 Публикую...")
 
-            # Показываем информацию о новости
-            title = selected_news.get('title', 'Без заголовка')
-            source = selected_news.get('source', 'Unknown')
-            description = selected_news.get('description', '')[:200]
+            # Создаем фейковый news_item для сохранения в БД
+            news_item = {
+                'url': '',
+                'title': 'Ручная публикация',
+                'published_at': None,
+                'source': 'Admin'
+            }
 
-            news_info = f"""✅ Выбрана новость:
-
-📰 {title}
-📌 Источник: {source}
-📝 {description}...
-
-✍️ Генерирую пост..."""
-
-            await query.edit_message_text(news_info)
-
-            # Генерируем пост
-            scheduler = context.bot_data.get('scheduler')
-            content_generator = scheduler.content_generator if scheduler else None
-
-            if not content_generator:
-                await query.message.reply_text("❌ Генератор контента недоступен")
-                return
-
-            generated_post = await content_generator.generate_post(selected_news)
-
-            if not generated_post:
-                await query.message.reply_text("❌ Не удалось сгенерировать пост")
-                return
-
-            context.user_data['generated_post'] = generated_post
-
-            # Показываем сгенерированный пост с опциями
-            keyboard = [
-                [InlineKeyboardButton("📤 Опубликовать", callback_data="collect_publish")],
-                [InlineKeyboardButton("🖼️ Добавить медиа", callback_data="collect_add_media")],
-                [InlineKeyboardButton("❌ Отменить", callback_data="collect_cancel")]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-
-            preview_text = f"""✅ Пост сгенерирован:
-
-{generated_post[:500]}{'...' if len(generated_post) > 500 else ''}
-
-Выберите действие:"""
-
-            await query.message.reply_text(preview_text, reply_markup=reply_markup)
-
-        except Exception as e:
-            logger.error(f"❌ Ошибка при обработке выбора новости: {e}")
-            await query.message.reply_text(f"❌ Ошибка: {e}")
-
-    async def collect_action_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик действий с собранной новостью"""
-        query = update.callback_query
-        await query.answer()
-
-        user = query.from_user
-        if not self.is_admin(user.id):
-            await query.edit_message_text("⛔ Доступ запрещен")
-            return
-
-        action = query.data.split('_')[-1]
-
-        try:
-            if action == "publish":
-                # Публикуем пост
-                generated_post = context.user_data.get('generated_post')
-                selected_news = context.user_data.get('selected_news')
-                media_file_id = context.user_data.get('media_file_id')
-
-                if not generated_post:
-                    await query.edit_message_text("❌ Пост не найден")
-                    return
-
-                publisher = context.bot_data.get('publisher')
-                if not publisher:
-                    await query.edit_message_text("❌ Издатель недоступен")
-                    return
-
-                await query.edit_message_text("📤 Публикую...")
-
-                # Публикуем с медиа если есть
-                if media_file_id:
-                    message_id = await publisher.publish_with_media(
-                        generated_post,
-                        selected_news,
-                        photo_url=media_file_id  # file_id работает как URL
-                    )
-                else:
-                    message_id = await publisher.publish_post(
-                        generated_post,
-                        selected_news
-                    )
-
-                if message_id:
-                    await query.message.reply_text(f"✅ Пост успешно опубликован! (ID: {message_id})")
-                else:
-                    await query.message.reply_text("❌ Не удалось опубликовать пост")
-
-                # Очищаем данные
-                context.user_data.clear()
-
-            elif action == "add_media":
-                await query.edit_message_text(
-                    "🖼️ Отправьте изображение для публикации\n\n"
-                    "После отправки изображения, нажмите 'Опубликовать'"
+            if media_file_id:
+                message_id = await publisher.publish_with_media(
+                    custom_text,
+                    news_item,
+                    photo_url=media_file_id
                 )
+            else:
+                message_id = await publisher.publish_post(custom_text, news_item)
 
-            elif action == "cancel":
-                await query.edit_message_text("❌ Публикация отменена")
-                context.user_data.clear()
+            if message_id:
+                await update.message.reply_text(f"✅ Пост опубликован! (ID: {message_id})")
+            else:
+                await update.message.reply_text("❌ Не удалось опубликовать")
+
+            # Очищаем данные
+            context.user_data.pop('publish_text', None)
+            context.user_data.pop('publish_media_id', None)
+            context.user_data.pop('waiting_for_publish_text', None)
 
         except Exception as e:
-            logger.error(f"❌ Ошибка при выполнении действия: {e}")
-            await query.message.reply_text(f"❌ Ошибка: {e}")
+            logger.error(f"❌ Ошибка публикации: {e}")
+            await update.message.reply_text(f"❌ Ошибка: {e}")
 
-    async def handle_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик получения фото для публикации"""
+    async def handle_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик текста для /publish"""
         user = update.effective_user
 
         if not self.is_admin(user.id):
             return
 
-        if 'generated_post' not in context.user_data:
-            await update.message.reply_text("⚠️ Сначала используйте /collect для создания поста")
+        if context.user_data.get('waiting_for_publish_text'):
+            text = update.message.text
+            context.user_data['publish_text'] = text
+            context.user_data.pop('waiting_for_publish_text', None)
+
+            await update.message.reply_text(
+                f"✅ Текст сохранен ({len(text)} символов)\n\n"
+                "Можете отправить изображение (опционально)\n"
+                "Затем используйте /publish_now для публикации"
+            )
+
+    async def handle_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик получения фото для /publish"""
+        user = update.effective_user
+
+        if not self.is_admin(user.id):
+            return
+
+        if 'publish_text' not in context.user_data:
+            await update.message.reply_text("⚠️ Сначала используйте /publish и отправьте текст")
             return
 
         try:
             # Получаем фото наивысшего качества
             photo = update.message.photo[-1]
-            file = await context.bot.get_file(photo.file_id)
-
-            # Сохраняем путь к файлу
-            context.user_data['media_file_id'] = photo.file_id
-
-            # Показываем кнопку для публикации с фото
-            keyboard = [
-                [InlineKeyboardButton("📤 Опубликовать с фото", callback_data="collect_publish")],
-                [InlineKeyboardButton("❌ Отменить", callback_data="collect_cancel")]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
+            context.user_data['publish_media_id'] = photo.file_id
 
             await update.message.reply_text(
-                "✅ Фото добавлено!\n\nГотово к публикации:",
-                reply_markup=reply_markup
+                "✅ Фото добавлено!\n\n"
+                "Используйте /publish_now для публикации"
             )
 
         except Exception as e:

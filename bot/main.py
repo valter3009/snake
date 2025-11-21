@@ -33,53 +33,6 @@ logger = setup_logger("bot.main", "INFO")
 scheduler = None
 
 
-async def publish_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик команды /publish - принудительная публикация"""
-    global scheduler
-
-    user = update.effective_user
-    handlers = context.bot_data.get('handlers')
-
-    if not handlers or not handlers.is_admin(user.id):
-        await update.message.reply_text("⛔ Доступ запрещен")
-        return
-
-    await update.message.reply_text("🚀 Запускаю принудительную публикацию...")
-
-    try:
-        # Запускаем принудительную публикацию
-        stats = await scheduler.force_publish()
-
-        # Формируем детальный отчет
-        by_source_text = '\n'.join([
-            f"   • {source}: {count}"
-            for source, count in stats.get('by_source', {}).items()
-        ])
-
-        result_text = f"""🚀 РЕЗУЛЬТАТ ПУБЛИКАЦИИ:
-
-📰 Собрано новостей: {stats.get('collected', 0)}
-{by_source_text if by_source_text else ''}
-
-🤖 Отобрано Claude AI: {stats.get('analyzed', 0)}
-   • Анализ: ✅ завершен
-
-✍️ Сгенерировано постов: {stats.get('generated', 0)}
-
-📤 Отправлено на модерацию: {stats.get('sent_to_moderation', 0)}
-✅ Опубликовано: {stats.get('published', 0)}
-
-{'⚠️ Ошибки: ' + str(len(stats.get('errors', []))) if stats.get('errors') else '✅ Без ошибок'}
-
-🎉 Публикация завершена!"""
-
-        await update.message.reply_text(result_text)
-
-    except Exception as e:
-        logger.error(f"❌ Ошибка принудительной публикации: {e}")
-        await update.message.reply_text(f"❌ Ошибка: {e}")
-
-
 async def moderation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик callback'ов от модерации"""
     query = update.callback_query
@@ -222,17 +175,8 @@ async def main():
         telegram_app.add_handler(CommandHandler("stats", handlers.stats_command))
         telegram_app.add_handler(CommandHandler("health", handlers.health_command))
         telegram_app.add_handler(CommandHandler("collect", handlers.collect_command))
-        telegram_app.add_handler(CommandHandler("publish", publish_command))
-
-        # Callback handlers для /collect
-        telegram_app.add_handler(CallbackQueryHandler(
-            handlers.collect_news_callback,
-            pattern=r'^collect_news_\d+$'
-        ))
-        telegram_app.add_handler(CallbackQueryHandler(
-            handlers.collect_action_callback,
-            pattern=r'^collect_(publish|add_media|cancel)$'
-        ))
+        telegram_app.add_handler(CommandHandler("publish", handlers.publish_command))
+        telegram_app.add_handler(CommandHandler("publish_now", handlers.publish_now_command))
 
         # Callback handler для модерации
         telegram_app.add_handler(CallbackQueryHandler(
@@ -240,10 +184,14 @@ async def main():
             pattern=r'^(approve|reject|edit)_'
         ))
 
-        # Message handler для фото (только для админа)
+        # Message handlers для фото и текста (только для админа)
         telegram_app.add_handler(MessageHandler(
             filters.PHOTO & filters.User(user_id=config.TELEGRAM_ADMIN_ID),
             handlers.handle_photo
+        ))
+        telegram_app.add_handler(MessageHandler(
+            filters.TEXT & ~filters.COMMAND & filters.User(user_id=config.TELEGRAM_ADMIN_ID),
+            handlers.handle_text
         ))
 
         # Error handler
