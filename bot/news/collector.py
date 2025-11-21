@@ -140,15 +140,18 @@ class NewsCollector:
 
         try:
             # Получаем новости за последние часы
-            from_date = datetime.utcnow() - timedelta(hours=self.max_age_hours)
+            from_date = datetime.now(timezone.utc) - timedelta(hours=self.max_age_hours)
 
             # Ищем по ключевым словам для российских новостей
             query = ' OR '.join(KEYWORDS[:5])  # Используем топ-5 ключевых слов
 
+            # Форматируем дату в ISO 8601 формат (YYYY-MM-DDTHH:MM:SS)
+            from_param = from_date.strftime('%Y-%m-%dT%H:%M:%S')
+
             response = self.newsapi_client.get_everything(
                 q=query,
                 language='ru',
-                from_param=from_date.isoformat(),
+                from_param=from_param,
                 sort_by='publishedAt',
                 page_size=50
             )
