@@ -238,16 +238,36 @@ async def main():
         # 5. Запускаем бота
         logger.info("🚀 Запуск бота...")
 
-        # Post init и shutdown hooks
-        telegram_app.post_init = post_init
-        telegram_app.post_shutdown = post_shutdown
+        # Инициализируем приложение
+        await telegram_app.initialize()
+        await telegram_app.start()
+
+        # Вызываем post_init
+        await post_init(telegram_app)
 
         # Запускаем polling
         logger.info("=" * 60)
         logger.info("✅ БОТ УСПЕШНО ЗАПУЩЕН И РАБОТАЕТ!")
         logger.info("=" * 60)
 
-        await telegram_app.run_polling(allowed_updates=Update.ALL_TYPES)
+        await telegram_app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+
+        # Ждем сигнала завершения
+        stop_signals = (signal.SIGINT, signal.SIGTERM)
+        loop = asyncio.get_running_loop()
+
+        # Создаем future для ожидания завершения
+        stop_event = asyncio.Event()
+
+        def signal_handler(signum, frame):
+            logger.info(f"⚠️ Получен сигнал {signum}")
+            stop_event.set()
+
+        for sig in stop_signals:
+            signal.signal(sig, signal_handler)
+
+        # Ждем сигнала завершения
+        await stop_event.wait()
 
     except KeyboardInterrupt:
         logger.info("⚠️ Получен сигнал прерывания (Ctrl+C)")
@@ -256,6 +276,15 @@ async def main():
         raise
     finally:
         logger.info("👋 Завершение работы бота")
+
+        # Graceful shutdown
+        try:
+            await post_shutdown(telegram_app)
+            await telegram_app.updater.stop()
+            await telegram_app.stop()
+            await telegram_app.shutdown()
+        except Exception as e:
+            logger.error(f"❌ Ошибка при shutdown: {e}")
 
 
 if __name__ == "__main__":
