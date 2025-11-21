@@ -6,11 +6,10 @@ from datetime import datetime, timedelta
 from typing import Optional, List
 from contextlib import asynccontextmanager
 
-from sqlalchemy import Column, Integer, String, DateTime, Text, create_engine, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.future import select
-from sqlalchemy.orm import sessionmaker
 
 import bot.config
 
@@ -61,7 +60,7 @@ class DatabaseManager:
         if database_url.startswith('postgres://'):
             database_url = database_url.replace('postgres://', 'postgresql://', 1)
 
-        # Создаем async engine для асинхронной работы
+        # Создаем async engine для асинхронной работы (ТОЛЬКО asyncpg, БЕЗ psycopg2)
         self.async_engine = create_async_engine(
             database_url.replace('postgresql://', 'postgresql+asyncpg://'),
             echo=False,
@@ -70,42 +69,21 @@ class DatabaseManager:
             max_overflow=20
         )
 
-        # Создаем sync engine для миграций
-        self.sync_engine = create_engine(
-            database_url,
-            echo=False,
-            pool_pre_ping=True
-        )
-
-        # Создаем фабрику сессий
+        # Создаем фабрику async сессий
         self.async_session_maker = async_sessionmaker(
             self.async_engine,
             class_=AsyncSession,
             expire_on_commit=False
         )
 
-        self.sync_session_maker = sessionmaker(
-            self.sync_engine,
-            expire_on_commit=False
-        )
-
     async def init_db(self):
-        """Инициализация базы данных (создание таблиц)"""
+        """Инициализация базы данных (создание таблиц) - только async"""
         try:
             async with self.async_engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
             logger.info("База данных успешно инициализирована")
         except Exception as e:
             logger.error(f"Ошибка инициализации БД: {e}")
-            raise
-
-    def init_db_sync(self):
-        """Синхронная инициализация базы данных"""
-        try:
-            Base.metadata.create_all(self.sync_engine)
-            logger.info("База данных успешно инициализирована (sync)")
-        except Exception as e:
-            logger.error(f"Ошибка инициализации БД (sync): {e}")
             raise
 
     @asynccontextmanager
