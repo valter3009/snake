@@ -91,7 +91,8 @@ class NewsScheduler:
         while self.is_running:
             try:
                 # Очищаем раз в день
-                await db_manager.cleanup_old_posts()
+                if db_manager:
+                    await db_manager.cleanup_old_posts()
                 await asyncio.sleep(86400)  # 24 часа
 
             except asyncio.CancelledError:
@@ -117,58 +118,98 @@ class NewsScheduler:
             return False
 
         # Проверяем, не превысили ли мы лимит постов за день
-        today_count = await db_manager.get_today_published_count()
-        daily_limit = random.randint(bot.config.config.MIN_POSTS_PER_DAY, bot.config.config.MAX_POSTS_PER_DAY)
+        if db_manager:
+            today_count = await db_manager.get_today_published_count()
+            daily_limit = random.randint(bot.config.config.MIN_POSTS_PER_DAY, bot.config.config.MAX_POSTS_PER_DAY)
 
-        if today_count >= daily_limit:
-            logger.info(f"Достигнут дневной лимит постов: {today_count}/{daily_limit}")
-            return False
+            if today_count >= daily_limit:
+                logger.info(f"Достигнут дневной лимит постов: {today_count}/{daily_limit}")
+                return False
 
         return True
 
     async def _collect_and_publish_news(self):
-        """Сбор и публикация новостей"""
+        """
+        Сбор и публикация новостей
+
+        Returns:
+            dict: Статистика публикации {
+                'collected': int,
+                'analyzed': int,
+                'generated': int,
+                'sent_to_moderation': int,
+                'published': int,
+                'error': str (опционально)
+            }
+        """
+        stats = {
+            'collected': 0,
+            'analyzed': 0,
+            'generated': 0,
+            'sent_to_moderation': 0,
+            'published': 0
+        }
+
         try:
             # 1. Собираем новости
-            logger.info("Собираем новости...")
+            logger.info("📰 Этап 1: Сбор новостей...")
             news_list = await news_collector.collect_news()
+            stats['collected'] = len(news_list) if news_list else 0
+            logger.info(f"✅ Собрано новостей: {stats['collected']}")
 
             if not news_list:
-                logger.warning("Не удалось собрать новости")
-                return
+                logger.warning("⚠️ Не удалось собрать новости (пустой список)")
+                stats['error'] = "Не удалось собрать новости"
+                return stats
 
             # 2. Анализируем и ранжируем новости
-            logger.info("Анализируем новости...")
+            logger.info("🤖 Этап 2: Анализ и ранжирование через Claude AI...")
             top_news = await news_analyzer.analyze_and_rank_news(news_list)
+            stats['analyzed'] = len(top_news) if top_news else 0
+            logger.info(f"✅ Отобрано топовых новостей: {stats['analyzed']}")
 
             if not top_news:
-                logger.warning("Не удалось выбрать топовые новости")
-                return
+                logger.warning("⚠️ Не удалось выбрать топовые новости (Claude вернул пустой список)")
+                stats['error'] = "Не удалось отобрать топовые новости"
+                return stats
 
             # 3. Генерируем посты
-            logger.info(f"Генерируем {len(top_news)} постов...")
+            logger.info(f"✍️ Этап 3: Генерация {len(top_news)} постов через Claude AI...")
             posts = await post_generator.generate_multiple_posts(top_news)
+            stats['generated'] = len(posts) if posts else 0
+            logger.info(f"✅ Сгенерировано постов: {stats['generated']}")
 
             if not posts:
-                logger.warning("Не удалось сгенерировать посты")
-                return
+                logger.warning("⚠️ Не удалось сгенерировать посты (Claude вернул пустой список)")
+                stats['error'] = "Не удалось сгенерировать посты"
+                return stats
 
             # 4. Публикуем посты через модерацию
+            logger.info(f"📤 Этап 4: Отправка {len(posts)} постов на модерацию...")
             for i, post in enumerate(posts):
-                logger.info(f"Публикуем пост {i + 1}/{len(posts)}...")
+                logger.info(f"📝 Публикуем пост {i + 1}/{len(posts)}...")
                 success = await self._publish_post_with_moderation(post)
 
+                stats['sent_to_moderation'] += 1
+
                 if success:
+                    stats['published'] += 1
+                    logger.info(f"✅ Пост {i + 1}/{len(posts)} успешно опубликован")
                     # Небольшая пауза между публикациями
                     if i < len(posts) - 1:
                         delay = random.randint(60, 300)  # 1-5 минут
-                        logger.info(f"Пауза {delay} секунд перед следующим постом")
+                        logger.info(f"⏳ Пауза {delay} секунд перед следующим постом")
                         await asyncio.sleep(delay)
+                else:
+                    logger.warning(f"⚠️ Пост {i + 1}/{len(posts)} не был опубликован")
 
-            logger.info("Цикл публикации завершён")
+            logger.info(f"🎉 Цикл публикации завершён. Опубликовано: {stats['published']}/{stats['generated']}")
+            return stats
 
         except Exception as e:
-            logger.error(f"Ошибка при сборе и публикации новостей: {e}")
+            logger.error(f"❌ Ошибка при сборе и публикации новостей: {e}")
+            stats['error'] = str(e)
+            return stats
 
     async def _publish_post_with_moderation(self, post: TelegramPost) -> bool:
         """
@@ -196,11 +237,12 @@ class NewsScheduler:
 
             if success:
                 # Сохраняем в БД
-                await db_manager.add_published_post(
-                    url=post.news_url,
-                    title=final_text[:200],  # Сохраняем начало поста как заголовок
-                    source=post.source
-                )
+                if db_manager:
+                    await db_manager.add_published_post(
+                        url=post.news_url,
+                        title=final_text[:200],  # Сохраняем начало поста как заголовок
+                        source=post.source
+                    )
                 logger.info("Пост успешно опубликован")
                 return True
 
@@ -268,9 +310,16 @@ class NewsScheduler:
             return False
 
     async def publish_now(self):
-        """Принудительная публикация (для тестирования)"""
-        logger.info("Принудительная публикация...")
-        await self._collect_and_publish_news()
+        """
+        Принудительная публикация (для тестирования)
+
+        Returns:
+            dict: Статистика публикации
+        """
+        logger.info("🚀 Принудительная публикация...")
+        stats = await self._collect_and_publish_news()
+        logger.info(f"📊 Результат принудительной публикации: {stats}")
+        return stats
 
 
 # Глобальный объект планировщика

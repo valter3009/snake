@@ -129,11 +129,29 @@ class NewsBot:
         await update.message.reply_text("🚀 Запускаю принудительную публикацию...")
 
         try:
-            await bot.scheduler.scheduler.publish_now()
-            await update.message.reply_text("✅ Публикация завершена!")
+            stats = await bot.scheduler.scheduler.publish_now()
+
+            # Формируем детальный отчет
+            report = "📊 **Результат публикации:**\n\n"
+            report += f"📰 Собрано новостей: {stats.get('collected', 0)}\n"
+            report += f"🤖 Отобрано Claude AI: {stats.get('analyzed', 0)}\n"
+            report += f"✍️ Сгенерировано постов: {stats.get('generated', 0)}\n"
+            report += f"📤 Отправлено на модерацию: {stats.get('sent_to_moderation', 0)}\n"
+            report += f"✅ Опубликовано: {stats.get('published', 0)}\n"
+
+            if 'error' in stats:
+                report += f"\n⚠️ **Ошибка:** {stats['error']}"
+                await update.message.reply_text(report, parse_mode='Markdown')
+            elif stats.get('published', 0) > 0:
+                report += "\n🎉 Публикация успешно завершена!"
+                await update.message.reply_text(report, parse_mode='Markdown')
+            else:
+                report += "\n⚠️ Ни один пост не был опубликован. Проверьте логи для деталей."
+                await update.message.reply_text(report, parse_mode='Markdown')
+
         except Exception as e:
-            logger.error(f"Ошибка принудительной публикации: {e}")
-            await update.message.reply_text(f"❌ Ошибка: {str(e)}")
+            logger.error(f"Ошибка принудительной публикации: {e}", exc_info=True)
+            await update.message.reply_text(f"❌ Критическая ошибка: {str(e)}")
 
     async def _handle_moderation_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик callback от inline кнопок модерации"""
