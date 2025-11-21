@@ -28,6 +28,7 @@ class NewsArticle:
         description: Optional[str] = None,
         content: Optional[str] = None,
         image_url: Optional[str] = None,
+        video_url: Optional[str] = None,
         author: Optional[str] = None
     ):
         self.title = title
@@ -37,6 +38,7 @@ class NewsArticle:
         self.description = description or ""
         self.content = content or ""
         self.image_url = image_url
+        self.video_url = video_url
         self.author = author
 
     def to_dict(self) -> Dict[str, Any]:
@@ -49,6 +51,7 @@ class NewsArticle:
             'description': self.description,
             'content': self.content,
             'image_url': self.image_url,
+            'video_url': self.video_url,
             'author': self.author
         }
 
@@ -198,12 +201,26 @@ class NewsCollector:
                                     else:
                                         published_at = datetime.utcnow()
 
-                                    # Получаем изображение
+                                    # Получаем изображение и видео
                                     image_url = None
+                                    video_url = None
+
                                     if hasattr(entry, 'media_content') and entry.media_content:
-                                        image_url = entry.media_content[0].get('url')
-                                    elif hasattr(entry, 'enclosures') and entry.enclosures:
-                                        image_url = entry.enclosures[0].get('href')
+                                        for media in entry.media_content:
+                                            media_type = media.get('type', '')
+                                            if media_type.startswith('video/') and not video_url:
+                                                video_url = media.get('url')
+                                            elif media_type.startswith('image/') and not image_url:
+                                                image_url = media.get('url')
+
+                                    if hasattr(entry, 'enclosures') and entry.enclosures:
+                                        for enclosure in entry.enclosures:
+                                            enc_type = enclosure.get('type', '')
+                                            enc_url = enclosure.get('href', '')
+                                            if enc_type.startswith('video/') and not video_url:
+                                                video_url = enc_url
+                                            elif enc_type.startswith('image/') and not image_url:
+                                                image_url = enc_url
 
                                     news = NewsArticle(
                                         title=entry.title,
@@ -213,6 +230,7 @@ class NewsCollector:
                                         description=entry.get('summary', ''),
                                         content=entry.get('content', [{}])[0].get('value', ''),
                                         image_url=image_url,
+                                        video_url=video_url,
                                         author=entry.get('author')
                                     )
                                     news_list.append(news)

@@ -32,6 +32,7 @@ class Moderator:
     def __init__(self, bot: Bot):
         self.bot = bot
         self.pending_posts: Dict[int, Dict[str, Any]] = {}  # message_id -> {post, event, result}
+        self.editing_context: Dict[int, int] = {}  # user_id -> original_message_id (для отслеживания редактирования)
 
     async def submit_for_moderation(self, post: TelegramPost) -> ModerationResult:
         """
@@ -46,11 +47,6 @@ class Moderator:
         logger.info("Отправляем пост на модерацию...")
 
         try:
-            # Скачиваем и оптимизируем изображение если есть
-            photo = None
-            if post.image_url:
-                photo = await media_handler.download_and_optimize_image(post.image_url)
-
             # Создаем клавиатуру с кнопками
             keyboard = InlineKeyboardMarkup([
                 [
@@ -62,19 +58,42 @@ class Moderator:
                 ]
             ])
 
-            # Отправляем сообщение админу
-            if photo:
-                message = await self.bot.send_photo(
+            caption_text = f"📝 **НОВЫЙ ПОСТ НА МОДЕРАЦИЮ**\n\n{post.text}\n\n_Источник: {post.source}_"
+
+            # Приоритет: видео > фото > текст
+            if post.video_url:
+                # Отправляем видео
+                message = await self.bot.send_video(
                     chat_id=bot.config.config.TELEGRAM_ADMIN_ID,
-                    photo=photo,
-                    caption=f"📝 **НОВЫЙ ПОСТ НА МОДЕРАЦИЮ**\n\n{post.text}\n\n_Источник: {post.source}_",
+                    video=post.video_url,
+                    caption=caption_text,
                     reply_markup=keyboard,
                     parse_mode='Markdown'
                 )
+            elif post.image_url:
+                # Скачиваем и оптимизируем изображение
+                photo = await media_handler.download_and_optimize_image(post.image_url)
+                if photo:
+                    message = await self.bot.send_photo(
+                        chat_id=bot.config.config.TELEGRAM_ADMIN_ID,
+                        photo=photo,
+                        caption=caption_text,
+                        reply_markup=keyboard,
+                        parse_mode='Markdown'
+                    )
+                else:
+                    # Если не удалось скачать фото, отправляем текстом
+                    message = await self.bot.send_message(
+                        chat_id=bot.config.config.TELEGRAM_ADMIN_ID,
+                        text=caption_text,
+                        reply_markup=keyboard,
+                        parse_mode='Markdown'
+                    )
             else:
+                # Только текст
                 message = await self.bot.send_message(
                     chat_id=bot.config.config.TELEGRAM_ADMIN_ID,
-                    text=f"📝 **НОВЫЙ ПОСТ НА МОДЕРАЦИЮ**\n\n{post.text}\n\n_Источник: {post.source}_",
+                    text=caption_text,
                     reply_markup=keyboard,
                     parse_mode='Markdown'
                 )
@@ -185,46 +204,62 @@ class Moderator:
 
         elif query_data == "edit":
             logger.info("Запрошено редактирование поста")
+            # Сохраняем контекст редактирования
+            self.editing_context[user_id] = message_id
             # Отправляем инструкцию по редактированию
             await self.bot.send_message(
                 chat_id=bot.config.config.TELEGRAM_ADMIN_ID,
-                text="📝 Отправьте отредактированный текст поста в ответ на это сообщение.\n\n"
-                     "Или нажмите /cancel для отмены редактирования.",
-                reply_to_message_id=message_id
+                text="📝 Отправьте отредактированный текст поста (просто напишите новый текст).\n\n"
+                     "Или отправьте /cancel для отмены редактирования."
             )
             # Редактирование будет обработано в handler текстовых сообщений
 
-    async def handle_edit_message(self, text: str, reply_to_message_id: int, user_id: int):
+    async def handle_edit_message(self, text: str, user_id: int):
         """
         Обработка отредактированного текста поста
 
         Args:
             text: Новый текст поста
-            reply_to_message_id: ID сообщения, на которое отвечаем
             user_id: ID пользователя
         """
         # Проверяем, что это админ
         if user_id != bot.config.config.TELEGRAM_ADMIN_ID:
             return
 
-        # Ищем пост в ожидающих (может быть reply на оригинальное сообщение)
-        if reply_to_message_id not in self.pending_posts:
-            logger.warning(f"Пост {reply_to_message_id} не найден для редактирования")
+        # Проверяем, есть ли активное редактирование
+        if user_id not in self.editing_context:
             return
 
         if text == "/cancel":
+            self.editing_context.pop(user_id, None)
             await self.bot.send_message(
                 chat_id=bot.config.config.TELEGRAM_ADMIN_ID,
                 text="❌ Редактирование отменено"
             )
             return
 
-        pending = self.pending_posts[reply_to_message_id]
+        # Получаем ID оригинального поста
+        original_message_id = self.editing_context[user_id]
+
+        # Ищем пост в ожидающих
+        if original_message_id not in self.pending_posts:
+            logger.warning(f"Пост {original_message_id} не найден для редактирования")
+            self.editing_context.pop(user_id, None)
+            await self.bot.send_message(
+                chat_id=bot.config.config.TELEGRAM_ADMIN_ID,
+                text="❌ Ошибка: пост не найден"
+            )
+            return
+
+        pending = self.pending_posts[original_message_id]
 
         logger.info("Пост отредактирован модератором")
         pending['result']['approved'] = True
         pending['result']['edited_text'] = text
         pending['event'].set()
+
+        # Удаляем контекст редактирования
+        self.editing_context.pop(user_id, None)
 
         await self.bot.send_message(
             chat_id=bot.config.config.TELEGRAM_ADMIN_ID,
