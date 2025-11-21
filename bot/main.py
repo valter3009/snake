@@ -8,6 +8,8 @@ from telegram.ext import (
     Application,
     CommandHandler,
     CallbackQueryHandler,
+    MessageHandler,
+    filters,
     ContextTypes
 )
 
@@ -219,10 +221,30 @@ async def main():
         telegram_app.add_handler(CommandHandler("status", handlers.status_command))
         telegram_app.add_handler(CommandHandler("stats", handlers.stats_command))
         telegram_app.add_handler(CommandHandler("health", handlers.health_command))
+        telegram_app.add_handler(CommandHandler("collect", handlers.collect_command))
         telegram_app.add_handler(CommandHandler("publish", publish_command))
 
-        # Callback handlers
-        telegram_app.add_handler(CallbackQueryHandler(moderation_callback))
+        # Callback handlers для /collect
+        telegram_app.add_handler(CallbackQueryHandler(
+            handlers.collect_news_callback,
+            pattern=r'^collect_news_\d+$'
+        ))
+        telegram_app.add_handler(CallbackQueryHandler(
+            handlers.collect_action_callback,
+            pattern=r'^collect_(publish|add_media|cancel)$'
+        ))
+
+        # Callback handler для модерации
+        telegram_app.add_handler(CallbackQueryHandler(
+            moderation_callback,
+            pattern=r'^(approve|reject|edit)_'
+        ))
+
+        # Message handler для фото (только для админа)
+        telegram_app.add_handler(MessageHandler(
+            filters.PHOTO & filters.User(user_id=config.TELEGRAM_ADMIN_ID),
+            handlers.handle_photo
+        ))
 
         # Error handler
         telegram_app.add_error_handler(handlers.error_handler)
