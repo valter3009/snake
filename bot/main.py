@@ -259,13 +259,8 @@ async def main():
 
 
 if __name__ == "__main__":
-    # Обработка сигналов для graceful shutdown
-    loop = asyncio.get_event_loop()
-
     # Запускаем основную функцию
     try:
-        loop.run_until_complete(main())
+        asyncio.run(main())
     except KeyboardInterrupt:
         logger.info("⚠️ Прерывание работы")
-    finally:
-        loop.close()
