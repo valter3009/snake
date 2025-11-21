@@ -8,6 +8,8 @@ from telegram.ext import (
     Application,
     CommandHandler,
     CallbackQueryHandler,
+    MessageHandler,
+    filters,
     ContextTypes
 )
 
@@ -92,29 +94,42 @@ async def publish_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Публикатор не инициализирован")
         return
 
-    # Проверяем, есть ли контент для публикации
-    message = update.message
+    # Устанавливаем флаг ожидания контента
+    context.user_data['waiting_for_publish'] = True
 
-    # Если это reply на предыдущее сообщение
-    if message.reply_to_message:
-        content_message = message.reply_to_message
-    else:
-        # Если нет, то ожидаем следующее сообщение
-        await update.message.reply_text("""📝 Отправьте контент для публикации:
+    await update.message.reply_text("""📝 Отправьте контент для публикации:
 
 • Текст
 • Фото с подписью
 • Видео с подписью
 
 Контент будет опубликован в канал БЕЗ изменений.""")
+
+
+async def handle_publish_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик контента для публикации после команды /publish"""
+    user = update.effective_user
+    handlers = context.bot_data.get('handlers')
+    publisher = context.bot_data.get('publisher')
+
+    # Проверяем, ожидаем ли мы контент для публикации
+    if not context.user_data.get('waiting_for_publish'):
         return
+
+    if not handlers or not handlers.is_admin(user.id):
+        return
+
+    # Сбрасываем флаг
+    context.user_data['waiting_for_publish'] = False
+
+    message = update.message
 
     try:
         # Публикуем контент напрямую
-        if content_message.photo:
+        if message.photo:
             # Публикуем фото с подписью
-            photo = content_message.photo[-1]  # Берем самое большое фото
-            caption = content_message.caption or ""
+            photo = message.photo[-1]  # Берем самое большое фото
+            caption = message.caption or ""
 
             sent_message = await context.bot.send_photo(
                 chat_id=publisher.channel_id,
@@ -126,10 +141,10 @@ async def publish_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.info(f"✅ Фото опубликовано админом (msg_id: {sent_message.message_id})")
             await update.message.reply_text(f"✅ Фото опубликовано в канал!\nID сообщения: {sent_message.message_id}")
 
-        elif content_message.video:
+        elif message.video:
             # Публикуем видео с подписью
-            video = content_message.video
-            caption = content_message.caption or ""
+            video = message.video
+            caption = message.caption or ""
 
             sent_message = await context.bot.send_video(
                 chat_id=publisher.channel_id,
@@ -141,9 +156,9 @@ async def publish_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.info(f"✅ Видео опубликовано админом (msg_id: {sent_message.message_id})")
             await update.message.reply_text(f"✅ Видео опубликовано в канал!\nID сообщения: {sent_message.message_id}")
 
-        elif content_message.text:
+        elif message.text:
             # Публикуем текст
-            text = content_message.text
+            text = message.text
 
             sent_message = await context.bot.send_message(
                 chat_id=publisher.channel_id,
@@ -277,6 +292,20 @@ async def main():
         telegram_app.add_handler(CommandHandler("health", handlers.health_command))
         telegram_app.add_handler(CommandHandler("collect", collect_command))
         telegram_app.add_handler(CommandHandler("publish", publish_command))
+
+        # Message handlers для контента после /publish
+        telegram_app.add_handler(MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            handle_publish_content
+        ))
+        telegram_app.add_handler(MessageHandler(
+            filters.PHOTO,
+            handle_publish_content
+        ))
+        telegram_app.add_handler(MessageHandler(
+            filters.VIDEO,
+            handle_publish_content
+        ))
 
         # Callback handlers
         telegram_app.add_handler(CallbackQueryHandler(moderation_callback))

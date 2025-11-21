@@ -4,6 +4,7 @@
 import asyncio
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
+import pytz
 import feedparser
 import aiohttp
 from newsapi import NewsApiClient
@@ -140,7 +141,7 @@ class NewsCollector:
 
         try:
             # Получаем новости за последние часы
-            from_date = datetime.utcnow() - timedelta(hours=self.max_age_hours)
+            from_date = datetime.now(pytz.UTC) - timedelta(hours=self.max_age_hours)
 
             # Ищем по ключевым словам для российских новостей
             query = ' OR '.join(KEYWORDS[:5])  # Используем топ-5 ключевых слов
@@ -148,7 +149,7 @@ class NewsCollector:
             response = self.newsapi_client.get_everything(
                 q=query,
                 language='ru',
-                from_param=from_date.isoformat(),
+                from_param=from_date.strftime('%Y-%m-%dT%H:%M:%S'),
                 sort_by='publishedAt',
                 page_size=50
             )
@@ -177,16 +178,20 @@ class NewsCollector:
             date_str: Строка с датой
 
         Returns:
-            datetime объект
+            datetime объект (всегда timezone-aware UTC)
         """
         if not date_str:
-            return datetime.utcnow()
+            return datetime.now(pytz.UTC)
 
         try:
             from dateutil import parser
-            return parser.parse(date_str)
+            parsed = parser.parse(date_str)
+            # Если дата не имеет timezone, добавляем UTC
+            if parsed.tzinfo is None:
+                parsed = pytz.UTC.localize(parsed)
+            return parsed
         except Exception:
-            return datetime.utcnow()
+            return datetime.now(pytz.UTC)
 
     def _remove_duplicates(self, news: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
@@ -219,7 +224,7 @@ class NewsCollector:
         Returns:
             Список свежих новостей
         """
-        cutoff_time = datetime.utcnow() - timedelta(hours=self.max_age_hours)
+        cutoff_time = datetime.now(pytz.UTC) - timedelta(hours=self.max_age_hours)
         recent_news = []
 
         for item in news:
