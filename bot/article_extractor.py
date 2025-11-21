@@ -65,7 +65,7 @@ class ArticleExtractor:
 
                 html = await response.text()
 
-            # Парсим HTML
+            # Парсим HTML (используем html.parser вместо lxml для быстрого деплоя)
             article_text = self._extract_text_from_html(html, url)
 
             if article_text:
@@ -90,7 +90,7 @@ class ArticleExtractor:
             Извлеченный текст
         """
         try:
-            soup = BeautifulSoup(html, 'lxml')
+            soup = BeautifulSoup(html, 'html.parser')
 
             # Удаляем ненужные теги
             for tag in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 'form', 'iframe']):
