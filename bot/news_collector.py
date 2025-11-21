@@ -309,9 +309,10 @@ class NewsCollector:
                 continue
 
             # Проверяем, не опубликован ли уже
-            is_published = await db_manager.is_post_published(news.url)
-            if is_published:
-                continue
+            if db_manager:
+                is_published = await db_manager.is_post_published(news.url)
+                if is_published:
+                    continue
 
             unique_news.append(news)
             seen_urls.add(news.url)

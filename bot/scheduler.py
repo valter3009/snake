@@ -91,7 +91,8 @@ class NewsScheduler:
         while self.is_running:
             try:
                 # Очищаем раз в день
-                await db_manager.cleanup_old_posts()
+                if db_manager:
+                    await db_manager.cleanup_old_posts()
                 await asyncio.sleep(86400)  # 24 часа
 
             except asyncio.CancelledError:
@@ -117,12 +118,13 @@ class NewsScheduler:
             return False
 
         # Проверяем, не превысили ли мы лимит постов за день
-        today_count = await db_manager.get_today_published_count()
-        daily_limit = random.randint(bot.config.config.MIN_POSTS_PER_DAY, bot.config.config.MAX_POSTS_PER_DAY)
+        if db_manager:
+            today_count = await db_manager.get_today_published_count()
+            daily_limit = random.randint(bot.config.config.MIN_POSTS_PER_DAY, bot.config.config.MAX_POSTS_PER_DAY)
 
-        if today_count >= daily_limit:
-            logger.info(f"Достигнут дневной лимит постов: {today_count}/{daily_limit}")
-            return False
+            if today_count >= daily_limit:
+                logger.info(f"Достигнут дневной лимит постов: {today_count}/{daily_limit}")
+                return False
 
         return True
 
@@ -196,11 +198,12 @@ class NewsScheduler:
 
             if success:
                 # Сохраняем в БД
-                await db_manager.add_published_post(
-                    url=post.news_url,
-                    title=final_text[:200],  # Сохраняем начало поста как заголовок
-                    source=post.source
-                )
+                if db_manager:
+                    await db_manager.add_published_post(
+                        url=post.news_url,
+                        title=final_text[:200],  # Сохраняем начало поста как заголовок
+                        source=post.source
+                    )
                 logger.info("Пост успешно опубликован")
                 return True
 
