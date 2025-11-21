@@ -79,6 +79,7 @@ class NewsBot:
         self.application.add_handler(CommandHandler("start", self._cmd_start))
         self.application.add_handler(CommandHandler("status", self._cmd_status))
         self.application.add_handler(CommandHandler("publish", self._cmd_publish))
+        self.application.add_handler(CommandHandler("help", self._cmd_help))
 
         # Callback от inline кнопок модерации
         self.application.add_handler(CallbackQueryHandler(self._handle_moderation_callback))
@@ -97,7 +98,8 @@ class NewsBot:
                 "👋 Привет, админ!\n\n"
                 "Доступные команды:\n"
                 "/status - статус бота\n"
-                "/publish - принудительная публикация"
+                "/publish - принудительная публикация\n"
+                "/help - полная инструкция по использованию"
             )
         else:
             await update.message.reply_text("👋 Привет!")
@@ -152,6 +154,61 @@ class NewsBot:
         except Exception as e:
             logger.error(f"Ошибка принудительной публикации: {e}", exc_info=True)
             await update.message.reply_text(f"❌ Критическая ошибка: {str(e)}")
+
+    async def _cmd_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды /help"""
+        if update.effective_user.id != bot.config.config.TELEGRAM_ADMIN_ID:
+            await update.message.reply_text(
+                "ℹ️ Это автоматический новостной бот.\n\n"
+                "Бот собирает новости из различных источников, анализирует их с помощью AI "
+                "и публикует в канал в аналитическом стиле."
+            )
+            return
+
+        help_text = f"""📖 **Инструкция по использованию бота**
+
+**Доступные команды:**
+/start - приветственное сообщение
+/status - текущий статус работы бота
+/publish - принудительная публикация новостей
+/help - эта инструкция
+
+**Как работает бот:**
+
+🤖 **Автоматический режим:**
+Бот автоматически собирает новости каждые {bot.config.config.MIN_COLLECTION_INTERVAL}-{bot.config.config.MAX_COLLECTION_INTERVAL} минут в период с {bot.config.config.PUBLISH_START_HOUR}:00 до {bot.config.config.PUBLISH_END_HOUR}:00 МСК. Публикует {bot.config.config.MIN_POSTS_PER_DAY}-{bot.config.config.MAX_POSTS_PER_DAY} постов в день.
+
+📰 **Источники новостей:**
+- NewsAPI (международные новости)
+- РБК (rbc.ru)
+- ТАСС (tass.ru)
+- Коммерсантъ (kommersant.ru)
+
+✍️ **Генерация контента:**
+Бот использует Claude AI для анализа новостей и генерации постов в критическом аналитическом стиле. Извлекает полный текст статей для глубокого анализа.
+
+📝 **Система модерации:**
+
+Каждый сгенерированный пост отправляется вам на модерацию с тремя кнопками:
+
+✅ **Одобрить** - пост будет опубликован в канал как есть
+
+✏️ **Редактировать** - после нажатия просто отправьте новый текст следующим сообщением. Бот автоматически заменит текст поста и опубликует его.
+
+❌ **Отклонить** - пост не будет опубликован
+
+📸 **Медиа:**
+Бот поддерживает изображения и видео. Если в новости есть видео или фото, они будут включены в пост. При модерации вы видите превью медиа.
+
+⚙️ **Технические детали:**
+- База данных PostgreSQL отслеживает опубликованные посты
+- Автоматическая оптимизация изображений
+- Фильтрация дубликатов
+- Проверка актуальности новостей (до {bot.config.config.NEWS_MAX_AGE_HOURS} часов)
+
+Используйте /status для проверки текущего состояния бота.
+"""
+        await update.message.reply_text(help_text, parse_mode='Markdown')
 
     async def _handle_moderation_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик callback от inline кнопок модерации"""
