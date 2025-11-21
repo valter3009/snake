@@ -1,0 +1,28 @@
+# Telegram
+python-telegram-bot==21.7
+
+# AI
+anthropic==0.40.0
+
+# Новости
+newsapi-python==0.2.7
+feedparser==6.0.11
+
+# HTTP
+aiohttp==3.10.10
+
+# База данных (ТОЛЬКО asyncpg!)
+asyncpg==0.30.0
+SQLAlchemy==2.0.36
+
+# Утилиты
+python-dateutil==2.9.0.post0
+pytz==2024.2
+python-dotenv==1.0.1
+
+# Обработка контента
+beautifulsoup4==4.12.3
+Pillow==11.0.0
+
+# Логирование
+colorlog==6.8.2
