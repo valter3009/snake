@@ -1,8 +1,8 @@
 """
-База данных PostgreSQL с asyncpg (ТОЛЬКО асинхронная работа)
+База данных с поддержкой PostgreSQL (asyncpg) и SQLite (aiosqlite)
 """
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List
 from sqlalchemy import Column, Integer, String, DateTime, select, delete
 from sqlalchemy.ext.asyncio import (
@@ -31,7 +31,7 @@ class PublishedPost(Base):
     published_at = Column(DateTime, nullable=False)
     source = Column(String(100))
     telegram_message_id = Column(Integer)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     def __repr__(self):
         return f"<PublishedPost(id={self.id}, title='{self.title[:50]}...', source='{self.source}')>"
@@ -60,18 +60,26 @@ class DatabaseManager:
         Инициализация базы данных и создание таблиц
         """
         try:
-            # Создаем async engine для асинхронной работы (ТОЛЬКО asyncpg, БЕЗ psycopg2)
+            # Создаем async engine для асинхронной работы
             database_url = self.database_url
+
+            # Поддержка PostgreSQL через asyncpg
             if database_url.startswith('postgresql://'):
                 database_url = database_url.replace('postgresql://', 'postgresql+asyncpg://')
+            # Поддержка SQLite через aiosqlite
+            elif database_url.startswith('sqlite:///'):
+                database_url = database_url.replace('sqlite:///', 'sqlite+aiosqlite:///')
 
-            self.async_engine = create_async_engine(
-                database_url,
-                echo=False,
-                pool_pre_ping=True,  # Проверка соединения перед использованием
-                pool_size=10,  # Размер пула соединений
-                max_overflow=20  # Максимальное количество дополнительных соединений
-            )
+            # Настройки для разных БД
+            engine_kwargs = {'echo': False}
+            if database_url.startswith('postgresql+asyncpg://'):
+                engine_kwargs.update({
+                    'pool_pre_ping': True,
+                    'pool_size': 10,
+                    'max_overflow': 20
+                })
+
+            self.async_engine = create_async_engine(database_url, **engine_kwargs)
 
             # Создаем фабрику async сессий
             self.async_session_maker = async_sessionmaker(
@@ -171,7 +179,7 @@ class DatabaseManager:
             return 0
 
         try:
-            today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+            today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
 
             async with self.async_session_maker() as session:
                 stmt = select(PublishedPost).where(
@@ -200,7 +208,7 @@ class DatabaseManager:
             return 0
 
         try:
-            cutoff_date = datetime.utcnow() - timedelta(days=days)
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
 
             async with self.async_session_maker() as session:
                 stmt = delete(PublishedPost).where(
