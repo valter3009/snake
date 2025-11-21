@@ -24,6 +24,7 @@ import bot.post_generator
 import bot.media_handler
 import bot.moderator
 import bot.scheduler
+import bot.article_extractor
 
 # Настройка логирования
 logging.basicConfig(
@@ -54,6 +55,7 @@ class NewsBot:
         logger.info("База данных инициализирована")
 
         # Инициализируем компоненты
+        bot.article_extractor.init_article_extractor()
         bot.news_collector.init_news_collector()
         bot.news_analyzer.init_news_analyzer()
         bot.post_generator.init_post_generator()
@@ -83,7 +85,7 @@ class NewsBot:
 
         # Текстовые сообщения (для редактирования постов)
         self.application.add_handler(
-            MessageHandler(filters.TEXT & ~filters.COMMAND & filters.REPLY, self._handle_edit_reply)
+            MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_text_message)
         )
 
         logger.info("Handlers зарегистрированы")
@@ -144,14 +146,12 @@ class NewsBot:
             user_id=query.from_user.id
         )
 
-    async def _handle_edit_reply(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик ответов на сообщения (для редактирования постов)"""
-        if update.message.reply_to_message:
-            await bot.moderator.moderator.handle_edit_message(
-                text=update.message.text,
-                reply_to_message_id=update.message.reply_to_message.message_id,
-                user_id=update.effective_user.id
-            )
+    async def _handle_text_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик текстовых сообщений (для редактирования постов)"""
+        await bot.moderator.moderator.handle_edit_message(
+            text=update.message.text,
+            user_id=update.effective_user.id
+        )
 
     async def start(self):
         """Запуск бота"""
@@ -200,6 +200,8 @@ class NewsBot:
                 logger.error(f"Ошибка при остановке Telegram приложения: {e}")
 
         # Закрываем соединения
+        if bot.article_extractor.article_extractor:
+            await bot.article_extractor.article_extractor.close()
         if bot.news_collector.news_collector:
             await bot.news_collector.news_collector.close()
         if bot.media_handler.media_handler:

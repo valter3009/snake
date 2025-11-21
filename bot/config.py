@@ -45,12 +45,12 @@ class Config:
     PUBLISH_END_HOUR: int = 23   # 23:00 МСК
 
     # Настройки публикации
-    MIN_POSTS_PER_DAY: int = 4
-    MAX_POSTS_PER_DAY: int = 10
+    MIN_POSTS_PER_DAY: int = 40
+    MAX_POSTS_PER_DAY: int = 50
 
     # Интервалы сбора новостей (в минутах)
-    MIN_COLLECTION_INTERVAL: int = 30
-    MAX_COLLECTION_INTERVAL: int = 60
+    MIN_COLLECTION_INTERVAL: int = 10
+    MAX_COLLECTION_INTERVAL: int = 20
 
     # Настройки модерации
     MODERATION_TIMEOUT: int = 15 * 60  # 15 минут в секундах
@@ -65,7 +65,7 @@ class Config:
     DUPLICATE_THRESHOLD: int = 70
 
     # Количество топовых новостей для публикации за цикл
-    TOP_NEWS_COUNT: int = 3
+    TOP_NEWS_COUNT: int = 5
 
     # Тематический баланс (проценты)
     TOPIC_BALANCE: dict = None

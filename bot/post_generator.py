@@ -4,12 +4,14 @@
 import logging
 import json
 import random
+import html
 from typing import Dict, Any
 
 from anthropic import AsyncAnthropic
 
 import bot.config
 from bot.news_collector import NewsArticle
+from bot.article_extractor import article_extractor
 
 logger = logging.getLogger(__name__)
 
@@ -17,14 +19,15 @@ logger = logging.getLogger(__name__)
 class TelegramPost:
     """Класс для представления поста в Telegram"""
 
-    def __init__(self, text: str, image_url: str = None, news_url: str = None, source: str = None):
+    def __init__(self, text: str, image_url: str = None, video_url: str = None, news_url: str = None, source: str = None):
         self.text = text
         self.image_url = image_url
+        self.video_url = video_url
         self.news_url = news_url
         self.source = source
 
     def __repr__(self):
-        return f"<TelegramPost(text_length={len(self.text)}, has_image={bool(self.image_url)})>"
+        return f"<TelegramPost(text_length={len(self.text)}, has_image={bool(self.image_url)}, has_video={bool(self.video_url)})>"
 
 
 class PostGenerator:
@@ -81,6 +84,14 @@ class PostGenerator:
         """
         logger.info(f"Генерируем пост для новости: {news.title[:50]}...")
 
+        # Пытаемся получить полный текст статьи, если его еще нет
+        if not news.content or len(news.content) < 500:
+            logger.info("Извлекаем полный текст статьи...")
+            full_text = await article_extractor.extract_article_text(news.url)
+            if full_text:
+                news.content = full_text
+                logger.info(f"Полный текст получен: {len(full_text)} символов")
+
         # Выбираем формат поста
         post_format = self._weighted_choice(self.post_formats)
 
@@ -94,6 +105,7 @@ class PostGenerator:
         post = TelegramPost(
             text=post_text,
             image_url=news.image_url,
+            video_url=news.video_url,
             news_url=news.url,
             source=news.source
         )
@@ -143,29 +155,42 @@ class PostGenerator:
         # Определяем, использовать ли эмодзи
         use_emoji = random.choice([True, True, False])  # 66% вероятность
 
-        prompt = f"""Ты - автор популярного новостного Telegram-канала. Напиши пост о следующей новости.
+        # Используем полный контент если доступен, иначе description
+        full_content = news.content if news.content and len(news.content) > 200 else news.description
+
+        prompt = f"""Ты - российский политический аналитик и блогер с критическим взглядом на события, пишущий в стиле Дмитрия Никотина. Твой стиль:
+- Прямолинейный и откровенный анализ
+- Критический, но обоснованный подход
+- Ироничные комментарии там, где уместно
+- Глубокое понимание контекста и подтекста событий
+- Неформальный, но грамотный язык
+- Объяснение "что это значит на самом деле" для читателя
 
 НОВОСТЬ:
 Заголовок: {news.title}
 Описание: {news.description}
-Контент: {news.content[:500] if news.content else ''}
+Полный текст: {full_content}
 Источник: {news.source}
 
-ТРЕБОВАНИЯ:
+ТРЕБОВАНИЯ К ПОСТУ:
 1. Формат: {post_format['template']}
 2. Длина: {post_length['description']}
-3. Tone: нейтральный + легкий юмор (где уместно)
-4. Эмодзи: {"1-2 на пост" if use_emoji else "БЕЗ эмодзи"}
-5. Markdown: используй **жирный** и *курсив* для акцентов
-6. Стиль: как от реального человека, НЕ шаблонно
-7. НЕ добавляй ссылки на источники в текст
+3. Стиль: как Дмитрий Никотин - аналитично, критично, с пониманием подтекста
+4. Эмодзи: {"умеренно (1-2)" if use_emoji else "БЕЗ эмодзи"}
+5. Markdown: используй **жирный** для ключевых моментов
+6. НЕ добавляй ссылки на источники
+
+СТРУКТУРА ПОСТА:
+1. Суть новости (что случилось)
+2. Контекст и подтекст (что это значит, почему важно)
+3. Твой критический анализ или комментарий
 
 ВАЖНО:
-- Каждый пост должен быть УНИКАЛЬНЫМ
-- Варьируй структуру и формулировки
-- Пиши живым языком
-- Если новость серьёзная - без юмора
-- Если новость интересная - добавь личное мнение
+- Опирайся на ВСЮ информацию из полного текста, а не только на заголовок
+- Раскрывай суть события, объясняй важные детали
+- Критический анализ должен быть обоснованным
+- Избегай конспирологии, но не бойся указывать на противоречия
+- Пиши как эксперт, который видит больше, чем написано между строк
 
 Верни ТОЛЬКО текст поста, без пояснений."""
 
@@ -184,6 +209,9 @@ class PostGenerator:
             # Убираем возможные кавычки в начале и конце
             if post_text.startswith('"') and post_text.endswith('"'):
                 post_text = post_text[1:-1]
+
+            # Декодируем HTML-сущности (&nbsp;, &laquo;, &raquo;, etc)
+            post_text = html.unescape(post_text)
 
             return post_text
 

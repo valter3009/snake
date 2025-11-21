@@ -192,7 +192,7 @@ class NewsScheduler:
             final_text = moderation_result.edited_text or post.text
 
             # Публикуем в канал
-            success = await self._publish_to_channel(final_text, post.image_url)
+            success = await self._publish_to_channel(final_text, post.image_url, post.video_url)
 
             if success:
                 # Сохраняем в БД
@@ -210,32 +210,47 @@ class NewsScheduler:
             logger.error(f"Ошибка публикации поста: {e}")
             return False
 
-    async def _publish_to_channel(self, text: str, image_url: Optional[str] = None) -> bool:
+    async def _publish_to_channel(self, text: str, image_url: Optional[str] = None, video_url: Optional[str] = None) -> bool:
         """
         Публикация поста в канал
 
         Args:
             text: Текст поста
             image_url: URL изображения (опционально)
+            video_url: URL видео (опционально)
 
         Returns:
             True если публикация успешна
         """
         try:
-            # Скачиваем и оптимизируем изображение если есть
-            photo = None
-            if image_url:
-                photo = await media_handler.download_and_optimize_image(image_url)
-
-            # Публикуем
-            if photo:
-                await self.bot.send_photo(
+            # Приоритет: видео > фото > текст
+            if video_url:
+                # Публикуем видео
+                await self.bot.send_video(
                     chat_id=bot.config.config.TELEGRAM_CHANNEL_ID,
-                    photo=photo,
+                    video=video_url,
                     caption=text,
                     parse_mode='Markdown'
                 )
+            elif image_url:
+                # Скачиваем и оптимизируем изображение
+                photo = await media_handler.download_and_optimize_image(image_url)
+                if photo:
+                    await self.bot.send_photo(
+                        chat_id=bot.config.config.TELEGRAM_CHANNEL_ID,
+                        photo=photo,
+                        caption=text,
+                        parse_mode='Markdown'
+                    )
+                else:
+                    # Если не удалось скачать фото, публикуем текстом
+                    await self.bot.send_message(
+                        chat_id=bot.config.config.TELEGRAM_CHANNEL_ID,
+                        text=text,
+                        parse_mode='Markdown'
+                    )
             else:
+                # Только текст
                 await self.bot.send_message(
                     chat_id=bot.config.config.TELEGRAM_CHANNEL_ID,
                     text=text,
