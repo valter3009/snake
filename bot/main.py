@@ -31,8 +31,8 @@ logger = setup_logger("bot.main", "INFO")
 scheduler = None
 
 
-async def publish_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик команды /publish - принудительная публикация"""
+async def collect_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик команды /collect - принудительный сбор и публикация новостей"""
     global scheduler
 
     user = update.effective_user
@@ -42,7 +42,7 @@ async def publish_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Доступ запрещен")
         return
 
-    await update.message.reply_text("🚀 Запускаю принудительную публикацию...")
+    await update.message.reply_text("🚀 Запускаю принудительный сбор новостей...")
 
     try:
         # Запускаем принудительную публикацию
@@ -54,7 +54,7 @@ async def publish_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for source, count in stats.get('by_source', {}).items()
         ])
 
-        result_text = f"""🚀 РЕЗУЛЬТАТ ПУБЛИКАЦИИ:
+        result_text = f"""🚀 РЕЗУЛЬТАТ СБОРА:
 
 📰 Собрано новостей: {stats.get('collected', 0)}
 {by_source_text if by_source_text else ''}
@@ -69,13 +69,97 @@ async def publish_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 {'⚠️ Ошибки: ' + str(len(stats.get('errors', []))) if stats.get('errors') else '✅ Без ошибок'}
 
-🎉 Публикация завершена!"""
+🎉 Сбор завершен!"""
 
         await update.message.reply_text(result_text)
 
     except Exception as e:
-        logger.error(f"❌ Ошибка принудительной публикации: {e}")
+        logger.error(f"❌ Ошибка принудительного сбора: {e}")
         await update.message.reply_text(f"❌ Ошибка: {e}")
+
+
+async def publish_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик команды /publish - прямая публикация контента от админа в канал"""
+    user = update.effective_user
+    handlers = context.bot_data.get('handlers')
+    publisher = context.bot_data.get('publisher')
+
+    if not handlers or not handlers.is_admin(user.id):
+        await update.message.reply_text("⛔ Доступ запрещен")
+        return
+
+    if not publisher:
+        await update.message.reply_text("❌ Публикатор не инициализирован")
+        return
+
+    # Проверяем, есть ли контент для публикации
+    message = update.message
+
+    # Если это reply на предыдущее сообщение
+    if message.reply_to_message:
+        content_message = message.reply_to_message
+    else:
+        # Если нет, то ожидаем следующее сообщение
+        await update.message.reply_text("""📝 Отправьте контент для публикации:
+
+• Текст
+• Фото с подписью
+• Видео с подписью
+
+Контент будет опубликован в канал БЕЗ изменений.""")
+        return
+
+    try:
+        # Публикуем контент напрямую
+        if content_message.photo:
+            # Публикуем фото с подписью
+            photo = content_message.photo[-1]  # Берем самое большое фото
+            caption = content_message.caption or ""
+
+            sent_message = await context.bot.send_photo(
+                chat_id=publisher.channel_id,
+                photo=photo.file_id,
+                caption=caption,
+                parse_mode=None
+            )
+
+            logger.info(f"✅ Фото опубликовано админом (msg_id: {sent_message.message_id})")
+            await update.message.reply_text(f"✅ Фото опубликовано в канал!\nID сообщения: {sent_message.message_id}")
+
+        elif content_message.video:
+            # Публикуем видео с подписью
+            video = content_message.video
+            caption = content_message.caption or ""
+
+            sent_message = await context.bot.send_video(
+                chat_id=publisher.channel_id,
+                video=video.file_id,
+                caption=caption,
+                parse_mode=None
+            )
+
+            logger.info(f"✅ Видео опубликовано админом (msg_id: {sent_message.message_id})")
+            await update.message.reply_text(f"✅ Видео опубликовано в канал!\nID сообщения: {sent_message.message_id}")
+
+        elif content_message.text:
+            # Публикуем текст
+            text = content_message.text
+
+            sent_message = await context.bot.send_message(
+                chat_id=publisher.channel_id,
+                text=text,
+                parse_mode=None
+            )
+
+            logger.info(f"✅ Текст опубликован админом (msg_id: {sent_message.message_id})")
+            await update.message.reply_text(f"✅ Текст опубликован в канал!\nID сообщения: {sent_message.message_id}")
+
+        else:
+            await update.message.reply_text("❌ Неподдерживаемый тип контента. Отправьте текст, фото или видео.")
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка публикации контента админа: {e}")
+        await update.message.reply_text(f"❌ Ошибка публикации: {e}")
 
 
 async def moderation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -191,6 +275,7 @@ async def main():
         telegram_app.add_handler(CommandHandler("status", handlers.status_command))
         telegram_app.add_handler(CommandHandler("stats", handlers.stats_command))
         telegram_app.add_handler(CommandHandler("health", handlers.health_command))
+        telegram_app.add_handler(CommandHandler("collect", collect_command))
         telegram_app.add_handler(CommandHandler("publish", publish_command))
 
         # Callback handlers

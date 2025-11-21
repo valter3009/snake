@@ -35,11 +35,11 @@ class Config:
         self.TIMEZONE = pytz.timezone(os.getenv("TIMEZONE", "Europe/Moscow"))
         self.LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 
-        # Расписание публикаций
-        self.MIN_POSTS_PER_DAY: int = int(os.getenv("MIN_POSTS_PER_DAY", "40"))
-        self.MAX_POSTS_PER_DAY: int = int(os.getenv("MAX_POSTS_PER_DAY", "50"))
-        self.PUBLISH_START_HOUR: int = int(os.getenv("PUBLISH_START_HOUR", "7"))
-        self.PUBLISH_END_HOUR: int = int(os.getenv("PUBLISH_END_HOUR", "23"))
+        # Расписание публикаций (24/7)
+        self.MIN_POSTS_PER_DAY: int = int(os.getenv("MIN_POSTS_PER_DAY", "50"))
+        self.MAX_POSTS_PER_DAY: int = int(os.getenv("MAX_POSTS_PER_DAY", "60"))
+        self.PUBLISH_START_HOUR: int = int(os.getenv("PUBLISH_START_HOUR", "0"))
+        self.PUBLISH_END_HOUR: int = int(os.getenv("PUBLISH_END_HOUR", "24"))
 
         # Контент
         self.TOP_NEWS_COUNT: int = int(os.getenv("TOP_NEWS_COUNT", "5"))
