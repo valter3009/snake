@@ -23,7 +23,7 @@ class NewsAnalyzer:
             api_key: API ключ Anthropic
         """
         self.client = AsyncAnthropic(api_key=api_key)
-        self.model = "claude-3-sonnet-20240229"
+        self.model = "claude-3-haiku-20240307"
         logger.info("🔧 NewsAnalyzer инициализирован (Claude AI)")
 
     async def select_top_news(
