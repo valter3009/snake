@@ -60,6 +60,10 @@ class PublishingScheduler:
         # Кэш последних опубликованных заголовков (для предотвращения дубликатов)
         self.recent_titles = []
         self.max_recent_titles = 50  # Храним последние 50 заголовков
+
+        # Кэш последних использованных источников (для разнообразия)
+        self.recent_sources = []
+        self.max_recent_sources = 10  # Храним последние 10 источников
         logger.info("🔧 PublishingScheduler инициализирован")
 
     async def start(self):
@@ -169,6 +173,33 @@ class PublishingScheduler:
                 return True
         return False
 
+    def _add_to_recent_sources(self, source: str):
+        """
+        Добавить источник в кэш последних источников
+
+        Args:
+            source: Название источника
+        """
+        self.recent_sources.append(source)
+
+        # Ограничиваем размер кэша
+        if len(self.recent_sources) > self.max_recent_sources:
+            self.recent_sources.pop(0)
+
+    def _is_recent_source(self, source: str) -> bool:
+        """
+        Проверить, использовался ли источник недавно
+
+        Args:
+            source: Название источника
+
+        Returns:
+            True если источник использовался недавно
+        """
+        # Проверяем последние 3 источника (чтобы не было подряд одинаковых)
+        recent_3 = self.recent_sources[-3:] if len(self.recent_sources) >= 3 else self.recent_sources
+        return source in recent_3
+
     async def _collect_and_publish_news(self, single_post: bool = False) -> Dict[str, Any]:
         """
         Собрать новости и опубликовать
@@ -225,8 +256,8 @@ class PublishingScheduler:
 
             # ЭТАП 2: Анализ через Claude
             logger.info("🤖 Этап 2: Анализ через Claude AI...")
-            # Если нужен только 1 пост, отбираем только 1 новость
-            top_count = 1 if single_post else self.config.TOP_NEWS_COUNT
+            # Если нужен только 1 пост, отбираем больше новостей для выбора (с учетом дубликатов и повторов источников)
+            top_count = 5 if single_post else self.config.TOP_NEWS_COUNT
             top_news = await self.news_analyzer.select_top_news(
                 filtered_news,
                 top_count=top_count
@@ -245,10 +276,16 @@ class PublishingScheduler:
             for news_item in top_news:
                 try:
                     title = news_item.get('title', '')
+                    source = news_item.get('source', 'Unknown')
 
                     # Проверяем на дубликаты
                     if self._is_duplicate_news(title):
                         logger.warning(f"  ⚠️ Пропускаем дубликат: {title[:50]}...")
+                        continue
+
+                    # Проверяем, не использовался ли источник недавно (только для single_post)
+                    if single_post and self._is_recent_source(source):
+                        logger.warning(f"  ⚠️ Пропускаем {source} - использовался недавно")
                         continue
 
                     # Извлекаем полный текст
@@ -271,7 +308,12 @@ class PublishingScheduler:
                         stats['generated'] += 1
                         # Добавляем в кэш после успешной генерации
                         self._add_to_recent_titles(title)
-                        logger.info(f"  ✅ Пост сгенерирован: {title[:50]}...")
+                        self._add_to_recent_sources(source)
+                        logger.info(f"  ✅ Пост сгенерирован: {title[:50]}... (источник: {source})")
+
+                        # Если нужен только 1 пост - прерываем цикл
+                        if single_post:
+                            break
 
                 except Exception as e:
                     logger.error(f"  ❌ Ошибка генерации поста: {e}")

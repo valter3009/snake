@@ -52,7 +52,7 @@ class ChannelPublisher:
             message = await self.bot.send_message(
                 chat_id=self.channel_id,
                 text=content,
-                parse_mode=None,  # Отключаем parse_mode
+                parse_mode='Markdown',  # Включаем Markdown форматирование
                 disable_web_page_preview=disable_preview
             )
 
@@ -108,7 +108,7 @@ class ChannelPublisher:
                     chat_id=self.channel_id,
                     photo=photo_url,
                     caption=content[:1024],  # Telegram caption limit
-                    parse_mode=None
+                    parse_mode='Markdown'
                 )
             else:
                 # Публикуем как обычный текст
