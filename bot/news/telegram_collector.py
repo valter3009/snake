@@ -141,8 +141,9 @@ class TelegramNewsCollector:
                     if not isinstance(message, Message):
                         continue
 
-                    # Пропускаем служебные сообщения
-                    if not message.text:
+                    # Пропускаем служебные сообщения БЕЗ текста И БЕЗ медиа
+                    has_media = message.photo is not None or message.video is not None
+                    if not message.text and not has_media:
                         continue
 
                     # Проверяем возраст сообщения
@@ -188,9 +189,17 @@ class TelegramNewsCollector:
             # Получаем текст
             text = message.text or ""
 
-            # Если текст слишком короткий, пропускаем
-            if len(text) < 50:
+            # Проверяем наличие медиа
+            has_media = message.photo is not None or message.video is not None
+
+            # Если текст слишком короткий И НЕТ медиа, пропускаем
+            if len(text) < 50 and not has_media:
                 return None
+
+            # Если есть медиа но мало текста, используем минимальный текст
+            if has_media and len(text) < 50:
+                media_type_ru = "Фото" if message.photo else "Видео"
+                text = f"{media_type_ru} из @{channel_username} (сообщение #{message.id})"
 
             # Первые 100 символов как заголовок
             title = text[:100].replace('\n', ' ').strip()
@@ -205,7 +214,6 @@ class TelegramNewsCollector:
 
             # Скачиваем медиа если есть
             media_path = None
-            has_media = message.photo is not None or message.video is not None
 
             if has_media:
                 media_path = await self._download_media(message, channel_username)
