@@ -64,6 +64,10 @@ class PublishingScheduler:
         # Кэш последних использованных источников (для разнообразия)
         self.recent_sources = []
         self.max_recent_sources = 10  # Храним последние 10 источников
+
+        # Счетчик публикаций по типам источников (для соотношения 2:1)
+        self.recent_publications = []  # Список типов последних публикаций (True = international, False = russian)
+        self.max_recent_publications = 30  # Храним последние 30 публикаций для анализа соотношения
         logger.info("🔧 PublishingScheduler инициализирован")
 
     async def start(self):
@@ -200,6 +204,42 @@ class PublishingScheduler:
         recent_3 = self.recent_sources[-3:] if len(self.recent_sources) >= 3 else self.recent_sources
         return source in recent_3
 
+    def _should_prefer_international(self) -> bool:
+        """
+        Определить, нужно ли предпочесть международную новость для соблюдения соотношения 2:1
+
+        Returns:
+            True если следующая новость должна быть международной
+        """
+        if len(self.recent_publications) < 3:
+            # В начале предпочитаем российские
+            return False
+
+        # Подсчитываем соотношение за последние публикации
+        recent = self.recent_publications[-9:]  # Берем последние 9 публикаций (3 цикла по соотношению 2:1)
+        international_count = sum(1 for is_intl in recent if is_intl)
+        russian_count = len(recent) - international_count
+
+        # Если международных меньше 1/3, предпочитаем международную
+        if len(recent) >= 3:
+            expected_intl = len(recent) / 3
+            return international_count < expected_intl
+
+        return False
+
+    def _add_to_recent_publications(self, is_international: bool):
+        """
+        Добавить публикацию в кэш последних публикаций
+
+        Args:
+            is_international: True если публикация международная
+        """
+        self.recent_publications.append(is_international)
+
+        # Ограничиваем размер кэша
+        if len(self.recent_publications) > self.max_recent_publications:
+            self.recent_publications.pop(0)
+
     async def _collect_and_publish_news(self, single_post: bool = False) -> Dict[str, Any]:
         """
         Собрать новости и опубликовать
@@ -273,10 +313,27 @@ class PublishingScheduler:
             logger.info("✍️ Этап 3: Генерация постов...")
             generated_posts = []
 
+            # Для single_post режима определяем, какой тип новости нужен
+            prefer_international = self._should_prefer_international() if single_post else False
+            if single_post:
+                russian_count = sum(1 for n in top_news if not n.get('is_international', False))
+                international_count = sum(1 for n in top_news if n.get('is_international', False))
+                logger.info(f"  📊 Доступно: российских {russian_count}, международных {international_count}")
+                logger.info(f"  🎯 Предпочтение: {'международная' if prefer_international else 'российская'} новость")
+
+                # Сортируем новости по предпочтению
+                if prefer_international and international_count > 0:
+                    # Сначала международные, потом российские
+                    top_news = sorted(top_news, key=lambda x: (not x.get('is_international', False)))
+                elif not prefer_international and russian_count > 0:
+                    # Сначала российские, потом международные
+                    top_news = sorted(top_news, key=lambda x: x.get('is_international', False))
+
             for news_item in top_news:
                 try:
                     title = news_item.get('title', '')
                     source = news_item.get('source', 'Unknown')
+                    is_international = news_item.get('is_international', False)
 
                     # Проверяем на дубликаты
                     if self._is_duplicate_news(title):
@@ -316,7 +373,9 @@ class PublishingScheduler:
                         # Добавляем в кэш после успешной генерации
                         self._add_to_recent_titles(title)
                         self._add_to_recent_sources(source)
-                        logger.info(f"  ✅ Пост сгенерирован: {title[:50]}... (источник: {source})")
+                        self._add_to_recent_publications(is_international)
+                        news_type = "международная" if is_international else "российская"
+                        logger.info(f"  ✅ Пост сгенерирован ({news_type}): {title[:50]}... (источник: {source})")
 
                         # Если нужен только 1 пост - прерываем цикл
                         if single_post:
