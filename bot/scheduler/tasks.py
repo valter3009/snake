@@ -376,6 +376,15 @@ class PublishingScheduler:
                     post = await self.content_generator.generate_post(news_item, full_text)
 
                     if post:
+                        # Логируем наличие медиа
+                        media_info = ""
+                        if news_item.get('media_path'):
+                            media_info = f" [медиа: {news_item.get('media_type')} - {news_item.get('media_path')}]"
+                        elif news_item.get('video_url'):
+                            media_info = f" [видео URL: {news_item.get('video_url')[:50]}...]"
+                        elif news_item.get('image_url'):
+                            media_info = f" [фото URL: {news_item.get('image_url')[:50]}...]"
+
                         generated_posts.append((news_item, post))
                         stats['generated'] += 1
                         # Добавляем в кэш после успешной генерации
@@ -383,7 +392,7 @@ class PublishingScheduler:
                         self._add_to_recent_sources(source)
                         self._add_to_recent_publications(is_international)
                         news_type = "международная" if is_international else "российская"
-                        logger.info(f"  ✅ Пост сгенерирован ({news_type}): {title[:50]}... (источник: {source})")
+                        logger.info(f"  ✅ Пост сгенерирован ({news_type}): {title[:50]}...{media_info} (источник: {source})")
 
                         # Если нужен только 1 пост - прерываем цикл
                         if single_post:

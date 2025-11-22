@@ -74,6 +74,9 @@ class PostModerator:
             media_path = news_item.get('media_path')
             media_type = news_item.get('media_type')
 
+            # Логируем медиа данные
+            logger.info(f"📊 Модерация - медиа данные: media_path={media_path}, media_type={media_type}, video_url={video_url}, image_url={image_url}")
+
             # Индикатор медиа
             media_info = ""
             if video_url or (media_type == 'video' and media_path):
