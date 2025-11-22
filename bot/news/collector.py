@@ -9,7 +9,14 @@ import aiohttp
 from newsapi import NewsApiClient
 from bot.core.logger import get_logger
 from bot.core.exceptions import NewsCollectionError
-from bot.news.sources import RSS_FEEDS, NEWSAPI_SOURCES, KEYWORDS
+from bot.news.sources import (
+    RSS_FEEDS,
+    RUSSIAN_RSS_FEEDS,
+    INTERNATIONAL_RSS_FEEDS,
+    NEWSAPI_SOURCES,
+    KEYWORDS,
+    RUSSIA_RELATED_KEYWORDS
+)
 
 logger = get_logger(__name__)
 
@@ -59,7 +66,13 @@ class NewsCollector:
         # Фильтруем по времени
         recent_news = self._filter_by_time(unique_news)
 
+        # Подсчитываем статистику по типам
+        russian_count = sum(1 for n in recent_news if not n.get('is_international', False))
+        international_count = sum(1 for n in recent_news if n.get('is_international', False))
+
         logger.info(f"✅ Всего собрано уникальных свежих новостей: {len(recent_news)}")
+        logger.info(f"  • Российские источники: {russian_count}")
+        logger.info(f"  • Международные источники (о России): {international_count}")
         return recent_news
 
     async def _collect_from_rss(self) -> List[Dict[str, Any]]:
@@ -112,14 +125,32 @@ class NewsCollector:
                 content = await response.text()
                 feed = feedparser.parse(content)
 
+                # Определяем тип источника
+                is_international = source in INTERNATIONAL_RSS_FEEDS
+
                 news = []
                 for entry in feed.entries[:20]:  # Берем только первые 20
+                    title = entry.get('title', '')
+                    description = entry.get('summary', '')
+
+                    # Для международных источников фильтруем по релевантности к России
+                    if is_international:
+                        text_to_check = (title + ' ' + description).lower()
+                        is_russia_related = any(
+                            keyword.lower() in text_to_check
+                            for keyword in RUSSIA_RELATED_KEYWORDS
+                        )
+
+                        if not is_russia_related:
+                            continue  # Пропускаем новости, не связанные с Россией
+
                     news_item = {
-                        'title': entry.get('title', ''),
+                        'title': title,
                         'url': entry.get('link', ''),
-                        'description': entry.get('summary', ''),
+                        'description': description,
                         'published_at': self._parse_date(entry.get('published')),
-                        'source': source
+                        'source': source,
+                        'is_international': is_international
                     }
                     news.append(news_item)
 
@@ -164,7 +195,8 @@ class NewsCollector:
                         'url': article.get('url', ''),
                         'description': article.get('description', ''),
                         'published_at': self._parse_date(article.get('publishedAt')),
-                        'source': article.get('source', {}).get('name', 'NewsAPI')
+                        'source': article.get('source', {}).get('name', 'NewsAPI'),
+                        'is_international': False  # NewsAPI используется только для российских новостей
                     }
                     news.append(news_item)
 
