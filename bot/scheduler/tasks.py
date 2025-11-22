@@ -257,7 +257,7 @@ class PublishingScheduler:
             # ЭТАП 2: Анализ через Claude
             logger.info("🤖 Этап 2: Анализ через Claude AI...")
             # Если нужен только 1 пост, отбираем больше новостей для выбора (с учетом дубликатов и повторов источников)
-            top_count = 5 if single_post else self.config.TOP_NEWS_COUNT
+            top_count = 15 if single_post else self.config.TOP_NEWS_COUNT
             top_news = await self.news_analyzer.select_top_news(
                 filtered_news,
                 top_count=top_count

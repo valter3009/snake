@@ -153,7 +153,8 @@ async def main():
         )
         moderator = PostModerator(
             admin_id=config.TELEGRAM_ADMIN_ID,
-            timeout=config.MODERATION_TIMEOUT
+            timeout=config.MODERATION_TIMEOUT,
+            publisher=publisher
         )
         handlers = BotHandlers(admin_id=config.TELEGRAM_ADMIN_ID)
 

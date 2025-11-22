@@ -15,16 +15,18 @@ class PostModerator:
     Модератор постов с возможностью подтверждения/отклонения
     """
 
-    def __init__(self, admin_id: int, timeout: int = 900):
+    def __init__(self, admin_id: int, timeout: int = 900, publisher=None):
         """
         Инициализация модератора
 
         Args:
             admin_id: ID администратора в Telegram
             timeout: Таймаут ожидания решения (секунды)
+            publisher: Публикатор для авто-публикации после таймаута
         """
         self.admin_id = admin_id
         self.timeout = timeout
+        self.publisher = publisher
         self.pending_posts: Dict[str, Dict[str, Any]] = {}
         logger.info(f"🔧 PostModerator инициализирован (timeout: {timeout}с)")
 
@@ -96,10 +98,15 @@ class PostModerator:
                 'news_item': news_item,
                 'message_id': sent_message.message_id,
                 'status': 'pending',
-                'context': context
+                'context': context,
+                'bot': bot
             }
 
             logger.info(f"📤 Пост отправлен на модерацию: {post_id}")
+
+            # Запускаем задачу авто-одобрения в фоне
+            asyncio.create_task(self._auto_approve_after_timeout(post_id))
+
             return post_id
 
         except Exception as e:
@@ -173,24 +180,75 @@ class PostModerator:
             del self.pending_posts[post_id]
             logger.info(f"🗑️ Пост удален из модерации: {post_id}")
 
-    async def auto_approve_after_timeout(self, post_id: str) -> bool:
+    async def _auto_approve_after_timeout(self, post_id: str) -> bool:
         """
-        Автоматически одобрить пост после таймаута
+        Автоматически одобрить и опубликовать пост после таймаута
 
         Args:
             post_id: ID поста
 
         Returns:
-            True если пост был авто-одобрен
+            True если пост был авто-одобрен и опубликован
         """
-        await asyncio.sleep(self.timeout)
+        try:
+            await asyncio.sleep(self.timeout)
 
-        if post_id in self.pending_posts:
+            if post_id not in self.pending_posts:
+                return False
+
             post_data = self.pending_posts[post_id]
 
+            # Публикуем только если пост все еще на модерации
             if post_data['status'] == 'pending':
                 post_data['status'] = 'auto_approved'
-                logger.info(f"⏰ Пост авто-одобрен после таймаута: {post_id}")
-                return True
+                logger.info(f"⏰ Пост авто-одобрен после таймаута ({self.timeout}с): {post_id}")
+
+                # Публикуем пост
+                if self.publisher:
+                    try:
+                        content = post_data.get('content', '')
+                        news_item = post_data.get('news_item', {})
+                        image_url = news_item.get('image_url')
+                        bot = post_data.get('bot')
+
+                        # Публикуем с изображением если оно есть
+                        if image_url:
+                            message_id = await self.publisher.publish_with_media(content, news_item, photo_url=image_url)
+                        else:
+                            message_id = await self.publisher.publish_post(content, news_item)
+
+                        if message_id:
+                            media_text = " с изображением" if image_url else ""
+                            logger.info(f"✅ Пост{media_text} авто-опубликован (msg_id: {message_id})")
+
+                            # Уведомляем админа
+                            if bot:
+                                await bot.send_message(
+                                    chat_id=self.admin_id,
+                                    text=f"⏰ Пост автоматически опубликован после {self.timeout // 60} минут ожидания\n\nID: {message_id}"
+                                )
+
+                            # Удаляем кнопки у сообщения модерации
+                            try:
+                                await bot.edit_message_reply_markup(
+                                    chat_id=self.admin_id,
+                                    message_id=post_data.get('message_id'),
+                                    reply_markup=None
+                                )
+                            except:
+                                pass
+
+                            return True
+
+                    except Exception as e:
+                        logger.error(f"❌ Ошибка авто-публикации: {e}")
+                        return False
+                else:
+                    logger.warning(f"⚠️ Publisher не настроен для авто-публикации")
+                    return False
+
+        except Exception as e:
+            logger.error(f"❌ Ошибка в _auto_approve_after_timeout: {e}")
+            return False
 
         return False
