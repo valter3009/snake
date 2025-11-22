@@ -25,8 +25,10 @@ class Config:
         # Claude AI (ОБЯЗАТЕЛЬНЫЙ)
         self.ANTHROPIC_API_KEY: str = self._get_required("ANTHROPIC_API_KEY")
 
-        # NewsAPI (ОБЯЗАТЕЛЬНЫЙ)
-        self.NEWS_API_KEY: str = self._get_required("NEWS_API_KEY")
+        # Telegram Client API (ОБЯЗАТЕЛЬНЫЕ для парсинга каналов)
+        self.TELEGRAM_API_ID: int = int(self._get_required("TELEGRAM_API_ID"))
+        self.TELEGRAM_API_HASH: str = self._get_required("TELEGRAM_API_HASH")
+        self.TELEGRAM_PHONE: str = self._get_required("TELEGRAM_PHONE")
 
         # Database (ОБЯЗАТЕЛЬНЫЙ)
         self.DATABASE_URL: str = self._get_required("DATABASE_URL")
@@ -64,7 +66,8 @@ class Config:
     def _log_config(self):
         """Логирование конфигурации (без секретов)"""
         logger.info("📊 Текущая конфигурация:")
-        logger.info(f"  • Канал: {self.TELEGRAM_CHANNEL_ID}")
+        logger.info(f"  • Канал для публикации: {self.TELEGRAM_CHANNEL_ID}")
+        logger.info(f"  • Telegram для парсинга: {self.TELEGRAM_PHONE}")
         logger.info(f"  • Посты/день: {self.MIN_POSTS_PER_DAY}-{self.MAX_POSTS_PER_DAY}")
         logger.info(f"  • Время: {self.PUBLISH_START_HOUR}:00-{self.PUBLISH_END_HOUR}:00 МСК")
         logger.info(f"  • Топ новостей: {self.TOP_NEWS_COUNT}")

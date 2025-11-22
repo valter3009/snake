@@ -48,20 +48,12 @@ class ChannelPublisher:
         try:
             logger.info(f"📤 Публикация поста в канал {self.channel_id}...")
 
-            # Создаем кнопку со ссылкой на источник
-            url = news_item.get('url', '')
-            reply_markup = None
-            if url:
-                keyboard = [[InlineKeyboardButton("📰 Читать полностью", url=url)]]
-                reply_markup = InlineKeyboardMarkup(keyboard)
-
-            # Публикуем в канал
+            # Публикуем в канал (ссылка уже встроена в текст)
             message = await self.bot.send_message(
                 chat_id=self.channel_id,
                 text=content,
                 parse_mode='Markdown',  # Включаем Markdown форматирование
-                disable_web_page_preview=True,  # Отключаем preview, т.к. будет кнопка
-                reply_markup=reply_markup
+                disable_web_page_preview=True  # Отключаем preview
             )
 
             logger.info(f"✅ Пост опубликован (message_id: {message.message_id})")
@@ -111,13 +103,6 @@ class ChannelPublisher:
             ID сообщения в Telegram или None при ошибке
         """
         try:
-            # Создаем кнопку со ссылкой на источник
-            url = news_item.get('url', '')
-            reply_markup = None
-            if url:
-                keyboard = [[InlineKeyboardButton("📰 Читать полностью", url=url)]]
-                reply_markup = InlineKeyboardMarkup(keyboard)
-
             if video_url:
                 logger.info("🎥 Публикация поста с видео...")
 
@@ -125,8 +110,7 @@ class ChannelPublisher:
                     chat_id=self.channel_id,
                     video=video_url,
                     caption=content[:1024],  # Telegram caption limit
-                    parse_mode='Markdown',
-                    reply_markup=reply_markup
+                    parse_mode='Markdown'
                 )
             elif photo_url:
                 logger.info("📷 Публикация поста с изображением...")
@@ -135,8 +119,7 @@ class ChannelPublisher:
                     chat_id=self.channel_id,
                     photo=photo_url,
                     caption=content[:1024],  # Telegram caption limit
-                    parse_mode='Markdown',
-                    reply_markup=reply_markup
+                    parse_mode='Markdown'
                 )
             else:
                 # Публикуем как обычный текст

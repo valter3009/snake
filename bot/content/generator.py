@@ -8,7 +8,8 @@ from bot.core.exceptions import ContentGenerationError
 from bot.content.prompts import (
     ANALYST_PROMPT,
     SHORT_ANALYSIS_PROMPT,
-    QUALITY_CHECK_PROMPT
+    QUALITY_CHECK_PROMPT,
+    get_random_template
 )
 from bot.content.formatter import ContentFormatter
 
@@ -50,23 +51,35 @@ class ContentGenerator:
         try:
             title = news_item.get('title', '')
             source = news_item.get('source', '')
+            source_url = news_item.get('url', '')
             published_at = news_item.get('published_at', '')
             description = news_item.get('description', '')
 
             logger.info(f"✍️ Генерация поста для: {title[:50]}...")
 
+            # Получаем случайный шаблон
+            template_num, template = get_random_template()
+            logger.info(f"  🎲 Используется шаблон #{template_num}")
+
             # Выбираем промпт в зависимости от наличия полного текста
             if full_text and len(full_text) > 500:
                 prompt = ANALYST_PROMPT.format(
+                    template_num=template_num,
+                    template=template,
                     title=title,
-                    source=source,
+                    source_name=source,
+                    source_url=source_url,
                     published_at=published_at,
                     content=full_text[:5000]  # Ограничиваем для экономии токенов
                 )
             else:
                 # Используем короткий промпт если полного текста нет
                 prompt = SHORT_ANALYSIS_PROMPT.format(
+                    template_num=template_num,
+                    template=template,
                     title=title,
+                    source_name=source,
+                    source_url=source_url,
                     description=description[:1000]
                 )
 
