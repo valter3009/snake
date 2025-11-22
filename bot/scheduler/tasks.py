@@ -57,6 +57,9 @@ class PublishingScheduler:
         self.config = config
 
         self.is_running = False
+        # Кэш последних опубликованных заголовков (для предотвращения дубликатов)
+        self.recent_titles = []
+        self.max_recent_titles = 50  # Храним последние 50 заголовков
         logger.info("🔧 PublishingScheduler инициализирован")
 
     async def start(self):
@@ -106,6 +109,65 @@ class PublishingScheduler:
         """Остановить планировщик"""
         self.is_running = False
         logger.info("🛑 Планировщик остановлен")
+
+    def _is_similar_title(self, title1: str, title2: str, threshold: float = 0.7) -> bool:
+        """
+        Проверить схожесть заголовков
+
+        Args:
+            title1: Первый заголовок
+            title2: Второй заголовок
+            threshold: Порог схожести (0.0 - 1.0)
+
+        Returns:
+            True если заголовки схожи
+        """
+        # Приводим к нижнему регистру и разбиваем на слова
+        words1 = set(title1.lower().split())
+        words2 = set(title2.lower().split())
+
+        # Убираем короткие слова (предлоги, союзы)
+        words1 = {w for w in words1 if len(w) > 3}
+        words2 = {w for w in words2 if len(w) > 3}
+
+        if not words1 or not words2:
+            return False
+
+        # Вычисляем коэффициент Жаккара (пересечение / объединение)
+        intersection = len(words1 & words2)
+        union = len(words1 | words2)
+
+        similarity = intersection / union if union > 0 else 0
+
+        return similarity >= threshold
+
+    def _add_to_recent_titles(self, title: str):
+        """
+        Добавить заголовок в кэш последних заголовков
+
+        Args:
+            title: Заголовок новости
+        """
+        self.recent_titles.append(title)
+
+        # Ограничиваем размер кэша
+        if len(self.recent_titles) > self.max_recent_titles:
+            self.recent_titles.pop(0)
+
+    def _is_duplicate_news(self, title: str) -> bool:
+        """
+        Проверить, не является ли новость дубликатом
+
+        Args:
+            title: Заголовок новости
+
+        Returns:
+            True если новость является дубликатом
+        """
+        for recent_title in self.recent_titles:
+            if self._is_similar_title(title, recent_title):
+                return True
+        return False
 
     async def _collect_and_publish_news(self, single_post: bool = False) -> Dict[str, Any]:
         """
@@ -182,6 +244,13 @@ class PublishingScheduler:
 
             for news_item in top_news:
                 try:
+                    title = news_item.get('title', '')
+
+                    # Проверяем на дубликаты
+                    if self._is_duplicate_news(title):
+                        logger.warning(f"  ⚠️ Пропускаем дубликат: {title[:50]}...")
+                        continue
+
                     # Извлекаем полный текст
                     url = news_item.get('url', '')
                     description = news_item.get('description', '')
@@ -192,7 +261,7 @@ class PublishingScheduler:
                     image_url = await self.news_extractor.extract_image_url(url)
                     if image_url:
                         news_item['image_url'] = image_url
-                        logger.info(f"  🖼️ Найдено изображение для {news_item.get('title', '')[:30]}...")
+                        logger.info(f"  🖼️ Найдено изображение для {title[:30]}...")
 
                     # Генерируем пост
                     post = await self.content_generator.generate_post(news_item, full_text)
@@ -200,7 +269,9 @@ class PublishingScheduler:
                     if post:
                         generated_posts.append((news_item, post))
                         stats['generated'] += 1
-                        logger.info(f"  ✅ Пост сгенерирован: {news_item.get('title', '')[:50]}...")
+                        # Добавляем в кэш после успешной генерации
+                        self._add_to_recent_titles(title)
+                        logger.info(f"  ✅ Пост сгенерирован: {title[:50]}...")
 
                 except Exception as e:
                     logger.error(f"  ❌ Ошибка генерации поста: {e}")
