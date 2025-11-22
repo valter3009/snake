@@ -28,7 +28,7 @@ class ContentGenerator:
             api_key: API ключ Anthropic
         """
         self.client = AsyncAnthropic(api_key=api_key)
-        self.model = "claude-3-5-sonnet-latest"
+        self.model = "claude-3-5-sonnet-20241022"
         self.formatter = ContentFormatter()
         logger.info("🔧 ContentGenerator инициализирован (Claude AI)")
 
