@@ -145,14 +145,14 @@ class NewsCollector:
             # Ищем по ключевым словам для российских новостей
             query = ' OR '.join(KEYWORDS[:5])  # Используем топ-5 ключевых слов
 
-            # Форматируем дату в ISO 8601 формат с timezone (YYYY-MM-DDTHH:MM:SSZ)
-            from_param = from_date.strftime('%Y-%m-%dT%H:%M:%SZ')
+            # NewsAPI требует формат YYYY-MM-DD или YYYY-MM-DDTHH:MM:SS (без Z)
+            from_date_str = from_date.strftime('%Y-%m-%dT%H:%M:%S')
 
             response = self.newsapi_client.get_everything(
                 q=query,
                 language='ru',
                 sources=None,  # Не ограничиваем источники
-                from_param=from_param,
+                from_param=from_date_str,
                 sort_by='publishedAt',
                 page_size=50
             )
