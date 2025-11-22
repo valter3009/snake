@@ -341,11 +341,6 @@ class PublishingScheduler:
                         logger.warning(f"  ⚠️ Пропускаем дубликат: {title[:50]}...")
                         continue
 
-                    # Проверяем, не использовался ли источник недавно (только для single_post)
-                    if single_post and self._is_recent_source(source):
-                        logger.warning(f"  ⚠️ Пропускаем {source} - использовался недавно")
-                        continue
-
                     # Извлекаем полный текст
                     url = news_item.get('url', '')
                     description = news_item.get('description', '')
