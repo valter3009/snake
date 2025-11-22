@@ -52,16 +52,22 @@ async def moderation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                 content = post_data.get('content', '')
                 news_item = post_data.get('news_item', {})
                 image_url = news_item.get('image_url')
+                video_url = news_item.get('video_url')
 
-                # Публикуем с изображением если оно есть
-                if image_url:
-                    logger.info(f"🖼️ Публикация с изображением: {image_url[:50]}...")
-                    message_id = await publisher.publish_with_media(content, news_item, photo_url=image_url)
+                # Публикуем с медиа если оно есть
+                if video_url or image_url:
+                    media_type = "видео" if video_url else "изображением"
+                    logger.info(f"🎬 Публикация с {media_type}...")
+                    message_id = await publisher.publish_with_media(
+                        content, news_item,
+                        photo_url=image_url,
+                        video_url=video_url
+                    )
                 else:
                     message_id = await publisher.publish_post(content, news_item)
 
                 if message_id:
-                    media_text = " с изображением" if image_url else ""
+                    media_text = f" с {media_type}" if (video_url or image_url) else ""
                     logger.info(f"✅ Пост{media_text} опубликован после модерации (msg_id: {message_id})")
                     await context.bot.send_message(
                         chat_id=query.from_user.id,

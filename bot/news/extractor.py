@@ -120,6 +120,74 @@ class NewsExtractor:
             logger.warning(f"⚠️ Ошибка при извлечении изображения из {url}: {e}")
             return None
 
+    async def extract_video_url(self, url: str) -> Optional[str]:
+        """
+        Извлечь URL видео из новости
+
+        Args:
+            url: URL новости
+
+        Returns:
+            URL видео или None
+        """
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    url,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                    headers={'User-Agent': 'Mozilla/5.0'}
+                ) as response:
+                    if response.status != 200:
+                        return None
+
+                    html = await response.text()
+                    soup = BeautifulSoup(html, 'html.parser')
+
+                    # Ищем видео в разных местах
+                    # 1. Open Graph video
+                    og_video = soup.find('meta', property='og:video')
+                    if og_video and og_video.get('content'):
+                        video_url = og_video['content']
+                        # Проверяем, что это прямая ссылка на видео
+                        if any(ext in video_url.lower() for ext in ['.mp4', '.webm', '.mov']):
+                            return video_url
+
+                    # 2. og:video:secure_url
+                    og_video_secure = soup.find('meta', property='og:video:secure_url')
+                    if og_video_secure and og_video_secure.get('content'):
+                        video_url = og_video_secure['content']
+                        if any(ext in video_url.lower() for ext in ['.mp4', '.webm', '.mov']):
+                            return video_url
+
+                    # 3. Twitter player stream
+                    twitter_player = soup.find('meta', attrs={'name': 'twitter:player:stream'})
+                    if twitter_player and twitter_player.get('content'):
+                        video_url = twitter_player['content']
+                        if any(ext in video_url.lower() for ext in ['.mp4', '.webm', '.mov']):
+                            return video_url
+
+                    # 4. Video tags в HTML
+                    video_tags = soup.find_all('video')
+                    for video in video_tags:
+                        # Ищем source внутри video
+                        source = video.find('source')
+                        if source and source.get('src'):
+                            src = source['src']
+                            if src.startswith('http') or src.startswith('//'):
+                                return src if src.startswith('http') else f"https:{src}"
+
+                        # Или src прямо у video
+                        src = video.get('src')
+                        if src:
+                            if src.startswith('http') or src.startswith('//'):
+                                return src if src.startswith('http') else f"https:{src}"
+
+                    return None
+
+        except Exception as e:
+            logger.warning(f"⚠️ Ошибка при извлечении видео из {url}: {e}")
+            return None
+
     async def extract_with_fallback(self, url: str, description: str) -> str:
         """
         Извлечь текст с fallback на описание

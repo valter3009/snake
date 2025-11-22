@@ -294,11 +294,18 @@ class PublishingScheduler:
 
                     full_text = await self.news_extractor.extract_with_fallback(url, description)
 
-                    # Извлекаем изображение
-                    image_url = await self.news_extractor.extract_image_url(url)
-                    if image_url:
-                        news_item['image_url'] = image_url
-                        logger.info(f"  🖼️ Найдено изображение для {title[:30]}...")
+                    # Извлекаем видео (приоритет над изображением)
+                    video_url = await self.news_extractor.extract_video_url(url)
+                    if video_url:
+                        news_item['video_url'] = video_url
+                        logger.info(f"  🎥 Найдено видео для {title[:30]}...")
+
+                    # Извлекаем изображение (если нет видео)
+                    if not video_url:
+                        image_url = await self.news_extractor.extract_image_url(url)
+                        if image_url:
+                            news_item['image_url'] = image_url
+                            logger.info(f"  🖼️ Найдено изображение для {title[:30]}...")
 
                     # Генерируем пост
                     post = await self.content_generator.generate_post(news_item, full_text)

@@ -70,13 +70,19 @@ class PostModerator:
             source = news_item.get('source', 'Неизвестный источник')
             url = news_item.get('url', '')
             image_url = news_item.get('image_url')
+            video_url = news_item.get('video_url')
 
-            image_info = f"\n🖼️ Изображение: Да" if image_url else ""
+            # Индикатор медиа
+            media_info = ""
+            if video_url:
+                media_info = "\n🎥 Видео: Да"
+            elif image_url:
+                media_info = "\n🖼️ Изображение: Да"
 
             moderation_message = f"""🔔 НОВЫЙ ПОСТ НА МОДЕРАЦИИ
 
 Источник: {source}
-Заголовок: {title}{image_info}
+Заголовок: {title}{media_info}
 
 ━━━━━━━━━━━━━━━━━━
 {post_content}
@@ -209,16 +215,21 @@ class PostModerator:
                         content = post_data.get('content', '')
                         news_item = post_data.get('news_item', {})
                         image_url = news_item.get('image_url')
+                        video_url = news_item.get('video_url')
                         bot = post_data.get('bot')
 
-                        # Публикуем с изображением если оно есть
-                        if image_url:
-                            message_id = await self.publisher.publish_with_media(content, news_item, photo_url=image_url)
+                        # Публикуем с медиа если оно есть
+                        if video_url or image_url:
+                            message_id = await self.publisher.publish_with_media(
+                                content, news_item,
+                                photo_url=image_url,
+                                video_url=video_url
+                            )
                         else:
                             message_id = await self.publisher.publish_post(content, news_item)
 
                         if message_id:
-                            media_text = " с изображением" if image_url else ""
+                            media_text = " с видео" if video_url else (" с изображением" if image_url else "")
                             logger.info(f"✅ Пост{media_text} авто-опубликован (msg_id: {message_id})")
 
                             # Уведомляем админа
