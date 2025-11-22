@@ -112,6 +112,15 @@ async def post_shutdown(application: Application):
         await db_manager.close()
         logger.info("✅ База данных закрыта")
 
+    # Закрываем Telegram соединения
+    try:
+        news_collector = application.bot_data.get('news_collector')
+        if news_collector:
+            await news_collector.close()
+            logger.info("✅ Telegram соединения закрыты")
+    except Exception as e:
+        logger.warning(f"⚠️ Ошибка при закрытии Telegram: {e}")
+
     logger.info("✅ Shutdown завершен")
 
 
@@ -142,7 +151,9 @@ async def main():
 
         # News components
         news_collector = NewsCollector(
-            newsapi_key=config.NEWS_API_KEY,
+            telegram_api_id=config.TELEGRAM_API_ID,
+            telegram_api_hash=config.TELEGRAM_API_HASH,
+            telegram_phone=config.TELEGRAM_PHONE,
             max_age_hours=config.NEWS_MAX_AGE_HOURS
         )
         news_analyzer = NewsAnalyzer(api_key=config.ANTHROPIC_API_KEY)
@@ -216,6 +227,7 @@ async def main():
         telegram_app.bot_data['moderator'] = moderator
         telegram_app.bot_data['publisher'] = publisher
         telegram_app.bot_data['scheduler'] = scheduler
+        telegram_app.bot_data['news_collector'] = news_collector
 
         logger.info("✅ Обработчики зарегистрированы")
 
