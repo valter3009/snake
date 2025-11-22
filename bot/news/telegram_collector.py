@@ -4,6 +4,7 @@
 import asyncio
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Optional
+from pathlib import Path
 from telethon import TelegramClient
 from telethon.tl.types import Message
 from bot.core.logger import get_logger
@@ -45,9 +46,14 @@ class TelegramNewsCollector:
     async def connect(self):
         """Подключиться к Telegram"""
         try:
-            self.client = TelegramClient(self.session_name, self.api_id, self.api_hash)
+            # Путь к файлу сессии в data директории (монтируется из Docker)
+            data_dir = Path(__file__).parent.parent.parent / "data"
+            data_dir.mkdir(exist_ok=True)
+            session_path = data_dir / self.session_name
+
+            self.client = TelegramClient(str(session_path), self.api_id, self.api_hash)
             await self.client.start(phone=self.phone)
-            logger.info("✅ Подключено к Telegram")
+            logger.info(f"✅ Подключено к Telegram (сессия: {session_path}.session)")
         except Exception as e:
             logger.error(f"❌ Ошибка подключения к Telegram: {e}")
             raise
