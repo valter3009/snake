@@ -152,6 +152,10 @@ class TelegramNewsCollector:
 
                     messages.append(message)
 
+                # Подсчитываем сообщения с медиа
+                media_count = sum(1 for msg in messages if (msg.photo is not None or msg.video is not None))
+                logger.info(f"  📊 @{username}: всего {len(messages)} сообщений, из них с медиа: {media_count}")
+
                 # Преобразуем сообщения в формат новостей
                 for msg in messages:
                     news_item = await self._message_to_news_item(msg, username)
@@ -216,7 +220,12 @@ class TelegramNewsCollector:
             media_path = None
 
             if has_media:
+                logger.info(f"  🔍 Обнаружено медиа в сообщении @{channel_username}/{message.id}")
                 media_path = await self._download_media(message, channel_username)
+                if media_path:
+                    logger.info(f"  ✅ Медиа успешно скачано: {media_path}")
+                else:
+                    logger.warning(f"  ⚠️ Не удалось скачать медиа из @{channel_username}/{message.id}")
 
             news_item = {
                 'title': title,
