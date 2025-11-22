@@ -61,6 +61,65 @@ class NewsExtractor:
             logger.warning(f"⚠️ Ошибка при извлечении текста из {url}: {e}")
             return None
 
+    async def extract_image_url(self, url: str) -> Optional[str]:
+        """
+        Извлечь URL главного изображения из новости
+
+        Args:
+            url: URL новости
+
+        Returns:
+            URL изображения или None
+        """
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    url,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                    headers={'User-Agent': 'Mozilla/5.0'}
+                ) as response:
+                    if response.status != 200:
+                        return None
+
+                    html = await response.text()
+                    soup = BeautifulSoup(html, 'html.parser')
+
+                    # Ищем изображение в разных местах
+                    # 1. Open Graph image
+                    og_image = soup.find('meta', property='og:image')
+                    if og_image and og_image.get('content'):
+                        return og_image['content']
+
+                    # 2. Twitter card image
+                    twitter_image = soup.find('meta', attrs={'name': 'twitter:image'})
+                    if twitter_image and twitter_image.get('content'):
+                        return twitter_image['content']
+
+                    # 3. Первое большое изображение в статье
+                    images = soup.find_all('img')
+                    for img in images:
+                        src = img.get('src') or img.get('data-src')
+                        if src and ('http' in src or src.startswith('//')):
+                            # Проверяем размер изображения (если указан)
+                            width = img.get('width')
+                            height = img.get('height')
+
+                            if width and height:
+                                try:
+                                    if int(width) >= 400 and int(height) >= 300:
+                                        return src if src.startswith('http') else f"https:{src}"
+                                except:
+                                    pass
+                            else:
+                                # Если размер не указан, берем первое
+                                return src if src.startswith('http') else f"https:{src}"
+
+                    return None
+
+        except Exception as e:
+            logger.warning(f"⚠️ Ошибка при извлечении изображения из {url}: {e}")
+            return None
+
     async def extract_with_fallback(self, url: str, description: str) -> str:
         """
         Извлечь текст с fallback на описание

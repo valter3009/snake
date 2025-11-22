@@ -62,7 +62,7 @@ class PublishingScheduler:
     async def start(self):
         """Запустить планировщик"""
         self.is_running = True
-        logger.info("🚀 Планировщик запущен")
+        logger.info("🚀 Планировщик запущен (режим: 1 пост каждые 15-30 минут)")
 
         while self.is_running:
             try:
@@ -71,18 +71,25 @@ class PublishingScheduler:
                 current_hour = datetime.now(timezone.utc).astimezone(self.config.TIMEZONE).hour
 
                 if self.config.PUBLISH_START_HOUR <= current_hour < self.config.PUBLISH_END_HOUR:
-                    # Собираем и публикуем новости
-                    stats = await self._collect_and_publish_news()
+                    # Проверяем лимит публикаций за день
+                    if db_manager:
+                        today_count = await db_manager.get_today_published_count()
+                        if today_count >= self.config.MAX_POSTS_PER_DAY:
+                            logger.info(f"😴 Дневной лимит достигнут ({today_count}/{self.config.MAX_POSTS_PER_DAY})")
+                            # Ждем до конца дня
+                            interval = 3600  # 1 час
+                            await asyncio.sleep(interval)
+                            continue
+
+                    # Собираем и публикуем ОДИН пост
+                    stats = await self._collect_and_publish_news(single_post=True)
 
                     # Логируем результаты
-                    logger.info(f"📊 Цикл завершен: {stats}")
+                    logger.info(f"📊 Цикл завершен: сгенерировано {stats.get('generated', 0)}, отправлено на модерацию {stats.get('sent_to_moderation', 0)}")
 
-                    # Случайный интервал между публикациями
-                    interval = random.randint(
-                        self.config.MIN_COLLECTION_INTERVAL * 60,
-                        self.config.MAX_COLLECTION_INTERVAL * 60
-                    )
-                    logger.info(f"⏰ Следующий сбор через {interval // 60} минут")
+                    # Рандомный интервал 15-30 минут (для ~40-50 постов в сутки)
+                    interval = random.randint(15 * 60, 30 * 60)
+                    logger.info(f"⏰ Следующий пост через {interval // 60} минут")
 
                 else:
                     logger.info(f"😴 Вне рабочих часов (текущий час: {current_hour})")
@@ -100,9 +107,12 @@ class PublishingScheduler:
         self.is_running = False
         logger.info("🛑 Планировщик остановлен")
 
-    async def _collect_and_publish_news(self) -> Dict[str, Any]:
+    async def _collect_and_publish_news(self, single_post: bool = False) -> Dict[str, Any]:
         """
         Собрать новости и опубликовать
+
+        Args:
+            single_post: Если True, создать только 1 пост
 
         Returns:
             Статистика выполнения
@@ -153,9 +163,11 @@ class PublishingScheduler:
 
             # ЭТАП 2: Анализ через Claude
             logger.info("🤖 Этап 2: Анализ через Claude AI...")
+            # Если нужен только 1 пост, отбираем только 1 новость
+            top_count = 1 if single_post else self.config.TOP_NEWS_COUNT
             top_news = await self.news_analyzer.select_top_news(
                 filtered_news,
-                top_count=self.config.TOP_NEWS_COUNT
+                top_count=top_count
             )
             stats['analyzed'] = len(top_news)
             logger.info(f"  ✅ Отобрано топовых новостей: {stats['analyzed']}")
@@ -175,6 +187,12 @@ class PublishingScheduler:
                     description = news_item.get('description', '')
 
                     full_text = await self.news_extractor.extract_with_fallback(url, description)
+
+                    # Извлекаем изображение
+                    image_url = await self.news_extractor.extract_image_url(url)
+                    if image_url:
+                        news_item['image_url'] = image_url
+                        logger.info(f"  🖼️ Найдено изображение для {news_item.get('title', '')[:30]}...")
 
                     # Генерируем пост
                     post = await self.content_generator.generate_post(news_item, full_text)
@@ -234,13 +252,14 @@ class PublishingScheduler:
 
     async def force_publish(self) -> Dict[str, Any]:
         """
-        Принудительная публикация (для команды /publish)
+        Принудительная публикация (для команды /collect)
+        Публикует только ОДИН пост
 
         Returns:
             Детальная статистика
         """
-        logger.info("🚀 Запуск принудительной публикации...")
-        return await self._collect_and_publish_news()
+        logger.info("🚀 Запуск принудительной публикации (1 пост)...")
+        return await self._collect_and_publish_news(single_post=True)
 
     async def cleanup_old_data(self):
         """Очистка старых данных из БД"""

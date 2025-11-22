@@ -67,11 +67,14 @@ class PostModerator:
             title = news_item.get('title', 'Без заголовка')
             source = news_item.get('source', 'Неизвестный источник')
             url = news_item.get('url', '')
+            image_url = news_item.get('image_url')
+
+            image_info = f"\n🖼️ Изображение: Да" if image_url else ""
 
             moderation_message = f"""🔔 НОВЫЙ ПОСТ НА МОДЕРАЦИИ
 
 Источник: {source}
-Заголовок: {title}
+Заголовок: {title}{image_info}
 
 ━━━━━━━━━━━━━━━━━━
 {post_content}

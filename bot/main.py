@@ -51,14 +51,21 @@ async def moderation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
             try:
                 content = post_data.get('content', '')
                 news_item = post_data.get('news_item', {})
+                image_url = news_item.get('image_url')
 
-                message_id = await publisher.publish_post(content, news_item)
+                # Публикуем с изображением если оно есть
+                if image_url:
+                    logger.info(f"🖼️ Публикация с изображением: {image_url[:50]}...")
+                    message_id = await publisher.publish_with_media(content, news_item, photo_url=image_url)
+                else:
+                    message_id = await publisher.publish_post(content, news_item)
 
                 if message_id:
-                    logger.info(f"✅ Пост опубликован после модерации (msg_id: {message_id})")
+                    media_text = " с изображением" if image_url else ""
+                    logger.info(f"✅ Пост{media_text} опубликован после модерации (msg_id: {message_id})")
                     await context.bot.send_message(
                         chat_id=query.from_user.id,
-                        text=f"✅ Пост успешно опубликован! (ID: {message_id})"
+                        text=f"✅ Пост{media_text} успешно опубликован! (ID: {message_id})"
                     )
             except Exception as e:
                 logger.error(f"❌ Ошибка публикации одобренного поста: {e}")
