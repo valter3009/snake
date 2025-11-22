@@ -200,9 +200,10 @@ class PublishingScheduler:
         Returns:
             True если источник использовался недавно
         """
-        # Проверяем последние 3 источника (чтобы не было подряд одинаковых)
-        recent_3 = self.recent_sources[-3:] if len(self.recent_sources) >= 3 else self.recent_sources
-        return source in recent_3
+        # Проверяем только самый последний источник (чтобы не было 2 подряд одинаковых)
+        if not self.recent_sources:
+            return False
+        return self.recent_sources[-1] == source
 
     def _should_prefer_international(self) -> bool:
         """
@@ -351,18 +352,21 @@ class PublishingScheduler:
 
                     full_text = await self.news_extractor.extract_with_fallback(url, description)
 
-                    # Извлекаем видео (приоритет над изображением)
-                    video_url = await self.news_extractor.extract_video_url(url)
-                    if video_url:
-                        news_item['video_url'] = video_url
-                        logger.info(f"  🎥 Найдено видео для {title[:30]}...")
+                    # Пропускаем извлечение медиа для Telegram каналов (т.к. медиа не доступно по прямой ссылке)
+                    # Для RSS/веб-источников медиа извлекается через URL
+                    if not url.startswith('https://t.me/'):
+                        # Извлекаем видео (приоритет над изображением)
+                        video_url = await self.news_extractor.extract_video_url(url)
+                        if video_url:
+                            news_item['video_url'] = video_url
+                            logger.info(f"  🎥 Найдено видео для {title[:30]}...")
 
-                    # Извлекаем изображение (если нет видео)
-                    if not video_url:
-                        image_url = await self.news_extractor.extract_image_url(url)
-                        if image_url:
-                            news_item['image_url'] = image_url
-                            logger.info(f"  🖼️ Найдено изображение для {title[:30]}...")
+                        # Извлекаем изображение (если нет видео)
+                        if not video_url:
+                            image_url = await self.news_extractor.extract_image_url(url)
+                            if image_url:
+                                news_item['image_url'] = image_url
+                                logger.info(f"  🖼️ Найдено изображение для {title[:30]}...")
 
                     # Генерируем пост
                     post = await self.content_generator.generate_post(news_item, full_text)
