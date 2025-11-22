@@ -92,6 +92,25 @@ class NewsCollector:
         """Закрыть соединения"""
         await self.telegram_collector.disconnect()
 
+    async def download_media(
+        self,
+        channel_username: str,
+        message_id: int
+    ) -> Optional[str]:
+        """
+        Скачать медиа для конкретного сообщения
+
+        Args:
+            channel_username: Username канала
+            message_id: ID сообщения
+
+        Returns:
+            Путь к скачанному файлу или None
+        """
+        return await self.telegram_collector.download_media_for_message(
+            channel_username, message_id
+        )
+
     def _remove_duplicates(self, news: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Удалить дубликаты по URL

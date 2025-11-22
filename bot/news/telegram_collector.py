@@ -65,6 +65,43 @@ class TelegramNewsCollector:
             await self.client.disconnect()
             logger.info("👋 Отключено от Telegram")
 
+    async def download_media_for_message(
+        self,
+        channel_username: str,
+        message_id: int
+    ) -> Optional[str]:
+        """
+        Скачать медиа для конкретного сообщения
+
+        Args:
+            channel_username: Username канала
+            message_id: ID сообщения
+
+        Returns:
+            Путь к скачанному файлу или None
+        """
+        try:
+            if not self.client:
+                await self.connect()
+
+            logger.info(f"  📥 Скачивание медиа из @{channel_username}/{message_id}...")
+
+            # Получаем сообщение
+            message = await self.client.get_messages(channel_username, ids=message_id)
+            if not message:
+                logger.warning(f"  ⚠️ Сообщение не найдено: @{channel_username}/{message_id}")
+                return None
+
+            # Скачиваем медиа
+            media_path = await self._download_media(message, channel_username)
+            if media_path:
+                logger.info(f"  ✅ Медиа скачано: {media_path}")
+            return media_path
+
+        except Exception as e:
+            logger.warning(f"  ⚠️ Ошибка скачивания медиа: {e}")
+            return None
+
     async def _download_media(
         self,
         message: Message,
@@ -216,16 +253,12 @@ class TelegramNewsCollector:
             # Дата публикации
             published_at = message.date.replace(tzinfo=timezone.utc)
 
-            # Скачиваем медиа если есть
-            media_path = None
-
+            # НЕ скачиваем медиа сразу - только помечаем что оно есть
+            # Скачаем позже, только для поста который будет опубликован
+            media_type = None
             if has_media:
-                logger.info(f"  🔍 Обнаружено медиа в сообщении @{channel_username}/{message.id}")
-                media_path = await self._download_media(message, channel_username)
-                if media_path:
-                    logger.info(f"  ✅ Медиа успешно скачано: {media_path}")
-                else:
-                    logger.warning(f"  ⚠️ Не удалось скачать медиа из @{channel_username}/{message.id}")
+                media_type = 'photo' if message.photo else 'video'
+                logger.info(f"  🔍 Обнаружено {media_type} в @{channel_username}/{message.id} (отложено)")
 
             news_item = {
                 'title': title,
@@ -235,9 +268,9 @@ class TelegramNewsCollector:
                 'source': f"@{channel_username}",
                 'is_international': False,  # Все каналы российские
                 'telegram_message_id': message.id,
+                'telegram_channel': channel_username,  # Сохраняем канал для скачивания
                 'has_media': has_media,
-                'media_path': media_path,  # Локальный путь к медиа файлу
-                'media_type': 'photo' if message.photo else ('video' if message.video else None)
+                'media_type': media_type
             }
 
             return news_item

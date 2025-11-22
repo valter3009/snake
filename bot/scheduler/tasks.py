@@ -351,21 +351,22 @@ class PublishingScheduler:
 
                     full_text = await self.news_extractor.extract_with_fallback(url, description)
 
-                    # Проверяем наличие медиа из Telegram (уже скачано)
-                    media_path = news_item.get('media_path')
+                    # Проверяем наличие медиа из Telegram
                     media_type = news_item.get('media_type')
+                    has_media = news_item.get('has_media', False)
 
-                    if media_path and media_type:
-                        # Медиа уже скачано из Telegram
-                        logger.info(f"  {'🎥' if media_type == 'video' else '📷'} Использую {media_type} из Telegram: {title[:30]}...")
+                    # Если есть медиа из Telegram - НЕ извлекаем из веба
+                    if has_media and media_type:
+                        # Медиа будет скачано позже, только для выбранного поста
+                        logger.info(f"  {'🎥' if media_type == 'video' else '📷'} Пост с {media_type} из Telegram: {title[:30]}...")
                     else:
-                        # Извлекаем видео из веб-источника (приоритет над изображением)
+                        # Извлекаем видео из веб-источника (только если нет Telegram медиа)
                         video_url = await self.news_extractor.extract_video_url(url)
                         if video_url:
                             news_item['video_url'] = video_url
                             logger.info(f"  🎥 Найдено видео для {title[:30]}...")
 
-                        # Извлекаем изображение (если нет видео)
+                        # Извлекаем изображение (если нет видео и нет Telegram медиа)
                         if not video_url:
                             image_url = await self.news_extractor.extract_image_url(url)
                             if image_url:
@@ -408,8 +409,34 @@ class PublishingScheduler:
                 logger.warning("⚠️ Не удалось сгенерировать посты")
                 return stats
 
-            # ЭТАП 4: Отправка на модерацию
-            logger.info("📤 Этап 4: Отправка на модерацию...")
+            # ЭТАП 4: Скачивание медиа для выбранных постов
+            logger.info("📥 Этап 4: Скачивание медиа для выбранных постов...")
+
+            for news_item, post in generated_posts:
+                try:
+                    # Скачиваем медиа из Telegram если нужно
+                    has_media = news_item.get('has_media', False)
+                    media_type = news_item.get('media_type')
+                    telegram_channel = news_item.get('telegram_channel')
+                    telegram_message_id = news_item.get('telegram_message_id')
+
+                    if has_media and media_type and telegram_channel and telegram_message_id:
+                        logger.info(f"  📥 Скачивание {media_type} для публикации...")
+                        media_path = await self.news_collector.download_media(
+                            telegram_channel, telegram_message_id
+                        )
+                        if media_path:
+                            news_item['media_path'] = media_path
+                            logger.info(f"  ✅ {media_type.capitalize()} готово: {media_path}")
+                        else:
+                            logger.warning(f"  ⚠️ Не удалось скачать {media_type}")
+
+                except Exception as e:
+                    logger.error(f"  ❌ Ошибка скачивания медиа: {e}")
+                    stats['errors'].append(str(e))
+
+            # ЭТАП 5: Отправка на модерацию
+            logger.info("📤 Этап 5: Отправка на модерацию...")
 
             for news_item, post in generated_posts:
                 try:
