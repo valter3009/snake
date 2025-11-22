@@ -88,7 +88,9 @@ class ChannelPublisher:
         content: str,
         news_item: Dict[str, Any],
         photo_url: Optional[str] = None,
-        video_url: Optional[str] = None
+        video_url: Optional[str] = None,
+        photo_path: Optional[str] = None,
+        video_path: Optional[str] = None
     ) -> Optional[int]:
         """
         Опубликовать пост с медиа
@@ -98,26 +100,32 @@ class ChannelPublisher:
             news_item: Данные новости
             photo_url: URL изображения
             video_url: URL видео
+            photo_path: Локальный путь к изображению
+            video_path: Локальный путь к видео
 
         Returns:
             ID сообщения в Telegram или None при ошибке
         """
         try:
-            if video_url:
-                logger.info("🎥 Публикация поста с видео...")
+            # Приоритет: локальные файлы > URL
+            video_source = video_path or video_url
+            photo_source = photo_path or photo_url
+
+            if video_source:
+                logger.info(f"🎥 Публикация поста с видео ({('файл' if video_path else 'URL')})...")
 
                 message = await self.bot.send_video(
                     chat_id=self.channel_id,
-                    video=video_url,
+                    video=open(video_source, 'rb') if video_path else video_source,
                     caption=content[:1024],  # Telegram caption limit
                     parse_mode='Markdown'
                 )
-            elif photo_url:
-                logger.info("📷 Публикация поста с изображением...")
+            elif photo_source:
+                logger.info(f"📷 Публикация поста с изображением ({('файл' if photo_path else 'URL')})...")
 
                 message = await self.bot.send_photo(
                     chat_id=self.channel_id,
-                    photo=photo_url,
+                    photo=open(photo_source, 'rb') if photo_path else photo_source,
                     caption=content[:1024],  # Telegram caption limit
                     parse_mode='Markdown'
                 )

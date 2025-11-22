@@ -40,3 +40,6 @@ wheels/
 # Database
 *.db
 *.sqlite
+
+# Media files
+data/media/

@@ -351,18 +351,26 @@ class PublishingScheduler:
 
                     full_text = await self.news_extractor.extract_with_fallback(url, description)
 
-                    # Извлекаем видео (приоритет над изображением)
-                    video_url = await self.news_extractor.extract_video_url(url)
-                    if video_url:
-                        news_item['video_url'] = video_url
-                        logger.info(f"  🎥 Найдено видео для {title[:30]}...")
+                    # Проверяем наличие медиа из Telegram (уже скачано)
+                    media_path = news_item.get('media_path')
+                    media_type = news_item.get('media_type')
 
-                    # Извлекаем изображение (если нет видео)
-                    if not video_url:
-                        image_url = await self.news_extractor.extract_image_url(url)
-                        if image_url:
-                            news_item['image_url'] = image_url
-                            logger.info(f"  🖼️ Найдено изображение для {title[:30]}...")
+                    if media_path and media_type:
+                        # Медиа уже скачано из Telegram
+                        logger.info(f"  {'🎥' if media_type == 'video' else '📷'} Использую {media_type} из Telegram: {title[:30]}...")
+                    else:
+                        # Извлекаем видео из веб-источника (приоритет над изображением)
+                        video_url = await self.news_extractor.extract_video_url(url)
+                        if video_url:
+                            news_item['video_url'] = video_url
+                            logger.info(f"  🎥 Найдено видео для {title[:30]}...")
+
+                        # Извлекаем изображение (если нет видео)
+                        if not video_url:
+                            image_url = await self.news_extractor.extract_image_url(url)
+                            if image_url:
+                                news_item['image_url'] = image_url
+                                logger.info(f"  🖼️ Найдено изображение для {title[:30]}...")
 
                     # Генерируем пост
                     post = await self.content_generator.generate_post(news_item, full_text)

@@ -2,6 +2,7 @@
 Сбор новостей из Telegram каналов через Telethon
 """
 import asyncio
+import hashlib
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Optional
 from pathlib import Path
@@ -63,6 +64,51 @@ class TelegramNewsCollector:
         if self.client:
             await self.client.disconnect()
             logger.info("👋 Отключено от Telegram")
+
+    async def _download_media(
+        self,
+        message: Message,
+        channel_username: str
+    ) -> Optional[str]:
+        """
+        Скачать медиа файл из сообщения
+
+        Args:
+            message: Telegram сообщение
+            channel_username: Username канала
+
+        Returns:
+            Путь к скачанному файлу или None
+        """
+        try:
+            if not (message.photo or message.video):
+                return None
+
+            # Создаем директорию для медиа
+            data_dir = Path(__file__).parent.parent.parent / "data" / "media"
+            data_dir.mkdir(parents=True, exist_ok=True)
+
+            # Генерируем уникальное имя файла
+            media_type = "photo" if message.photo else "video"
+            timestamp = int(message.date.timestamp())
+            hash_input = f"{channel_username}_{message.id}_{timestamp}"
+            file_hash = hashlib.md5(hash_input.encode()).hexdigest()[:12]
+
+            # Определяем расширение
+            extension = ".jpg" if message.photo else ".mp4"
+            filename = f"{media_type}_{file_hash}{extension}"
+            file_path = data_dir / filename
+
+            # Скачиваем медиа
+            logger.info(f"  📥 Скачивание {media_type} из @{channel_username}/{message.id}...")
+            await self.client.download_media(message, file=str(file_path))
+
+            logger.info(f"  ✅ Медиа сохранено: {file_path}")
+            return str(file_path)
+
+        except Exception as e:
+            logger.warning(f"  ⚠️ Ошибка скачивания медиа: {e}")
+            return None
 
     async def collect_from_channels(
         self,
@@ -157,6 +203,13 @@ class TelegramNewsCollector:
             # Дата публикации
             published_at = message.date.replace(tzinfo=timezone.utc)
 
+            # Скачиваем медиа если есть
+            media_path = None
+            has_media = message.photo is not None or message.video is not None
+
+            if has_media:
+                media_path = await self._download_media(message, channel_username)
+
             news_item = {
                 'title': title,
                 'url': url,
@@ -165,7 +218,9 @@ class TelegramNewsCollector:
                 'source': f"@{channel_username}",
                 'is_international': False,  # Все каналы российские
                 'telegram_message_id': message.id,
-                'has_media': message.photo is not None or message.video is not None
+                'has_media': has_media,
+                'media_path': media_path,  # Локальный путь к медиа файлу
+                'media_type': 'photo' if message.photo else ('video' if message.video else None)
             }
 
             return news_item
