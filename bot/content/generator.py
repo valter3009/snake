@@ -85,7 +85,7 @@ class ContentGenerator:
             formatted_post = self.formatter.format_for_telegram(generated_content)
 
             # Проверяем качество
-            if not self.formatter.validate_post_length(formatted_post, min_words=200, max_words=800):
+            if not self.formatter.validate_post_length(formatted_post, min_words=30, max_words=200):
                 logger.warning("⚠️ Пост не прошел проверку длины")
                 return None
 
