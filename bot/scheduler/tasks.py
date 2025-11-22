@@ -3,7 +3,7 @@
 """
 import asyncio
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional
 from bot.core.logger import get_logger
 from bot.core.database import db_manager
@@ -67,7 +67,8 @@ class PublishingScheduler:
         while self.is_running:
             try:
                 # Проверяем, находимся ли в рабочих часах
-                current_hour = datetime.now(self.config.TIMEZONE).hour
+                # Получаем текущее время в UTC и конвертируем в timezone проекта
+                current_hour = datetime.now(timezone.utc).astimezone(self.config.TIMEZONE).hour
 
                 if self.config.PUBLISH_START_HOUR <= current_hour < self.config.PUBLISH_END_HOUR:
                     # Собираем и публикуем новости
