@@ -67,8 +67,12 @@ class DatabaseManager:
             if database_url.startswith('postgresql://'):
                 database_url = database_url.replace('postgresql://', 'postgresql+asyncpg://')
             # Поддержка SQLite через aiosqlite
-            elif database_url.startswith('sqlite:///'):
-                database_url = database_url.replace('sqlite:///', 'sqlite+aiosqlite:///')
+            elif database_url.startswith('sqlite://'):
+                # Поддержка обоих форматов: sqlite:// и sqlite:///
+                if database_url.startswith('sqlite:///'):
+                    database_url = database_url.replace('sqlite:///', 'sqlite+aiosqlite:///')
+                else:
+                    database_url = database_url.replace('sqlite://', 'sqlite+aiosqlite:///')
 
             # Настройки для разных БД
             engine_kwargs = {'echo': False}
