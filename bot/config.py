@@ -49,7 +49,7 @@ class Config:
 
         # Разное
         self.POSTS_RETENTION_DAYS: int = int(os.getenv("POSTS_RETENTION_DAYS", "30"))
-        self.MODERATION_TIMEOUT: int = int(os.getenv("MODERATION_TIMEOUT", "900"))
+        self.MODERATION_TIMEOUT: int = int(os.getenv("MODERATION_TIMEOUT", "600"))
 
         logger.info("✅ Конфигурация успешно загружена")
         self._log_config()

@@ -2,7 +2,7 @@
 Публикация контента в Telegram канал
 """
 from typing import Optional, Dict, Any
-from telegram import Bot
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import TelegramError
 from bot.core.logger import get_logger
 from bot.core.exceptions import PublishError
@@ -48,12 +48,20 @@ class ChannelPublisher:
         try:
             logger.info(f"📤 Публикация поста в канал {self.channel_id}...")
 
+            # Создаем кнопку со ссылкой на источник
+            url = news_item.get('url', '')
+            reply_markup = None
+            if url:
+                keyboard = [[InlineKeyboardButton("📰 Читать полностью", url=url)]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+
             # Публикуем в канал
             message = await self.bot.send_message(
                 chat_id=self.channel_id,
                 text=content,
-                parse_mode=None,  # Отключаем parse_mode
-                disable_web_page_preview=disable_preview
+                parse_mode='Markdown',  # Включаем Markdown форматирование
+                disable_web_page_preview=True,  # Отключаем preview, т.к. будет кнопка
+                reply_markup=reply_markup
             )
 
             logger.info(f"✅ Пост опубликован (message_id: {message.message_id})")
@@ -87,7 +95,8 @@ class ChannelPublisher:
         self,
         content: str,
         news_item: Dict[str, Any],
-        photo_url: Optional[str] = None
+        photo_url: Optional[str] = None,
+        video_url: Optional[str] = None
     ) -> Optional[int]:
         """
         Опубликовать пост с медиа
@@ -96,19 +105,38 @@ class ChannelPublisher:
             content: Контент поста
             news_item: Данные новости
             photo_url: URL изображения
+            video_url: URL видео
 
         Returns:
             ID сообщения в Telegram или None при ошибке
         """
         try:
-            if photo_url:
+            # Создаем кнопку со ссылкой на источник
+            url = news_item.get('url', '')
+            reply_markup = None
+            if url:
+                keyboard = [[InlineKeyboardButton("📰 Читать полностью", url=url)]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+
+            if video_url:
+                logger.info("🎥 Публикация поста с видео...")
+
+                message = await self.bot.send_video(
+                    chat_id=self.channel_id,
+                    video=video_url,
+                    caption=content[:1024],  # Telegram caption limit
+                    parse_mode='Markdown',
+                    reply_markup=reply_markup
+                )
+            elif photo_url:
                 logger.info("📷 Публикация поста с изображением...")
 
                 message = await self.bot.send_photo(
                     chat_id=self.channel_id,
                     photo=photo_url,
                     caption=content[:1024],  # Telegram caption limit
-                    parse_mode=None
+                    parse_mode='Markdown',
+                    reply_markup=reply_markup
                 )
             else:
                 # Публикуем как обычный текст

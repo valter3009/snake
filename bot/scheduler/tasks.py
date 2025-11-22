@@ -57,12 +57,19 @@ class PublishingScheduler:
         self.config = config
 
         self.is_running = False
+        # Кэш последних опубликованных заголовков (для предотвращения дубликатов)
+        self.recent_titles = []
+        self.max_recent_titles = 50  # Храним последние 50 заголовков
+
+        # Кэш последних использованных источников (для разнообразия)
+        self.recent_sources = []
+        self.max_recent_sources = 10  # Храним последние 10 источников
         logger.info("🔧 PublishingScheduler инициализирован")
 
     async def start(self):
         """Запустить планировщик"""
         self.is_running = True
-        logger.info("🚀 Планировщик запущен")
+        logger.info("🚀 Планировщик запущен (режим: 1 пост каждые 15-30 минут)")
 
         while self.is_running:
             try:
@@ -71,18 +78,25 @@ class PublishingScheduler:
                 current_hour = datetime.now(timezone.utc).astimezone(self.config.TIMEZONE).hour
 
                 if self.config.PUBLISH_START_HOUR <= current_hour < self.config.PUBLISH_END_HOUR:
-                    # Собираем и публикуем новости
-                    stats = await self._collect_and_publish_news()
+                    # Проверяем лимит публикаций за день
+                    if db_manager:
+                        today_count = await db_manager.get_today_published_count()
+                        if today_count >= self.config.MAX_POSTS_PER_DAY:
+                            logger.info(f"😴 Дневной лимит достигнут ({today_count}/{self.config.MAX_POSTS_PER_DAY})")
+                            # Ждем до конца дня
+                            interval = 3600  # 1 час
+                            await asyncio.sleep(interval)
+                            continue
+
+                    # Собираем и публикуем ОДИН пост
+                    stats = await self._collect_and_publish_news(single_post=True)
 
                     # Логируем результаты
-                    logger.info(f"📊 Цикл завершен: {stats}")
+                    logger.info(f"📊 Цикл завершен: сгенерировано {stats.get('generated', 0)}, отправлено на модерацию {stats.get('sent_to_moderation', 0)}")
 
-                    # Случайный интервал между публикациями
-                    interval = random.randint(
-                        self.config.MIN_COLLECTION_INTERVAL * 60,
-                        self.config.MAX_COLLECTION_INTERVAL * 60
-                    )
-                    logger.info(f"⏰ Следующий сбор через {interval // 60} минут")
+                    # Рандомный интервал 15-30 минут (для ~40-50 постов в сутки)
+                    interval = random.randint(15 * 60, 30 * 60)
+                    logger.info(f"⏰ Следующий пост через {interval // 60} минут")
 
                 else:
                     logger.info(f"😴 Вне рабочих часов (текущий час: {current_hour})")
@@ -100,9 +114,98 @@ class PublishingScheduler:
         self.is_running = False
         logger.info("🛑 Планировщик остановлен")
 
-    async def _collect_and_publish_news(self) -> Dict[str, Any]:
+    def _is_similar_title(self, title1: str, title2: str, threshold: float = 0.7) -> bool:
+        """
+        Проверить схожесть заголовков
+
+        Args:
+            title1: Первый заголовок
+            title2: Второй заголовок
+            threshold: Порог схожести (0.0 - 1.0)
+
+        Returns:
+            True если заголовки схожи
+        """
+        # Приводим к нижнему регистру и разбиваем на слова
+        words1 = set(title1.lower().split())
+        words2 = set(title2.lower().split())
+
+        # Убираем короткие слова (предлоги, союзы)
+        words1 = {w for w in words1 if len(w) > 3}
+        words2 = {w for w in words2 if len(w) > 3}
+
+        if not words1 or not words2:
+            return False
+
+        # Вычисляем коэффициент Жаккара (пересечение / объединение)
+        intersection = len(words1 & words2)
+        union = len(words1 | words2)
+
+        similarity = intersection / union if union > 0 else 0
+
+        return similarity >= threshold
+
+    def _add_to_recent_titles(self, title: str):
+        """
+        Добавить заголовок в кэш последних заголовков
+
+        Args:
+            title: Заголовок новости
+        """
+        self.recent_titles.append(title)
+
+        # Ограничиваем размер кэша
+        if len(self.recent_titles) > self.max_recent_titles:
+            self.recent_titles.pop(0)
+
+    def _is_duplicate_news(self, title: str) -> bool:
+        """
+        Проверить, не является ли новость дубликатом
+
+        Args:
+            title: Заголовок новости
+
+        Returns:
+            True если новость является дубликатом
+        """
+        for recent_title in self.recent_titles:
+            if self._is_similar_title(title, recent_title):
+                return True
+        return False
+
+    def _add_to_recent_sources(self, source: str):
+        """
+        Добавить источник в кэш последних источников
+
+        Args:
+            source: Название источника
+        """
+        self.recent_sources.append(source)
+
+        # Ограничиваем размер кэша
+        if len(self.recent_sources) > self.max_recent_sources:
+            self.recent_sources.pop(0)
+
+    def _is_recent_source(self, source: str) -> bool:
+        """
+        Проверить, использовался ли источник недавно
+
+        Args:
+            source: Название источника
+
+        Returns:
+            True если источник использовался недавно
+        """
+        # Проверяем последние 3 источника (чтобы не было подряд одинаковых)
+        recent_3 = self.recent_sources[-3:] if len(self.recent_sources) >= 3 else self.recent_sources
+        return source in recent_3
+
+    async def _collect_and_publish_news(self, single_post: bool = False) -> Dict[str, Any]:
         """
         Собрать новости и опубликовать
+
+        Args:
+            single_post: Если True, создать только 1 пост
 
         Returns:
             Статистика выполнения
@@ -153,9 +256,11 @@ class PublishingScheduler:
 
             # ЭТАП 2: Анализ через Claude
             logger.info("🤖 Этап 2: Анализ через Claude AI...")
+            # Если нужен только 1 пост, отбираем больше новостей для выбора (с учетом дубликатов и повторов источников)
+            top_count = 15 if single_post else self.config.TOP_NEWS_COUNT
             top_news = await self.news_analyzer.select_top_news(
                 filtered_news,
-                top_count=self.config.TOP_NEWS_COUNT
+                top_count=top_count
             )
             stats['analyzed'] = len(top_news)
             logger.info(f"  ✅ Отобрано топовых новостей: {stats['analyzed']}")
@@ -170,11 +275,37 @@ class PublishingScheduler:
 
             for news_item in top_news:
                 try:
+                    title = news_item.get('title', '')
+                    source = news_item.get('source', 'Unknown')
+
+                    # Проверяем на дубликаты
+                    if self._is_duplicate_news(title):
+                        logger.warning(f"  ⚠️ Пропускаем дубликат: {title[:50]}...")
+                        continue
+
+                    # Проверяем, не использовался ли источник недавно (только для single_post)
+                    if single_post and self._is_recent_source(source):
+                        logger.warning(f"  ⚠️ Пропускаем {source} - использовался недавно")
+                        continue
+
                     # Извлекаем полный текст
                     url = news_item.get('url', '')
                     description = news_item.get('description', '')
 
                     full_text = await self.news_extractor.extract_with_fallback(url, description)
+
+                    # Извлекаем видео (приоритет над изображением)
+                    video_url = await self.news_extractor.extract_video_url(url)
+                    if video_url:
+                        news_item['video_url'] = video_url
+                        logger.info(f"  🎥 Найдено видео для {title[:30]}...")
+
+                    # Извлекаем изображение (если нет видео)
+                    if not video_url:
+                        image_url = await self.news_extractor.extract_image_url(url)
+                        if image_url:
+                            news_item['image_url'] = image_url
+                            logger.info(f"  🖼️ Найдено изображение для {title[:30]}...")
 
                     # Генерируем пост
                     post = await self.content_generator.generate_post(news_item, full_text)
@@ -182,7 +313,14 @@ class PublishingScheduler:
                     if post:
                         generated_posts.append((news_item, post))
                         stats['generated'] += 1
-                        logger.info(f"  ✅ Пост сгенерирован: {news_item.get('title', '')[:50]}...")
+                        # Добавляем в кэш после успешной генерации
+                        self._add_to_recent_titles(title)
+                        self._add_to_recent_sources(source)
+                        logger.info(f"  ✅ Пост сгенерирован: {title[:50]}... (источник: {source})")
+
+                        # Если нужен только 1 пост - прерываем цикл
+                        if single_post:
+                            break
 
                 except Exception as e:
                     logger.error(f"  ❌ Ошибка генерации поста: {e}")
@@ -234,13 +372,14 @@ class PublishingScheduler:
 
     async def force_publish(self) -> Dict[str, Any]:
         """
-        Принудительная публикация (для команды /publish)
+        Принудительная публикация (для команды /collect)
+        Публикует только ОДИН пост
 
         Returns:
             Детальная статистика
         """
-        logger.info("🚀 Запуск принудительной публикации...")
-        return await self._collect_and_publish_news()
+        logger.info("🚀 Запуск принудительной публикации (1 пост)...")
+        return await self._collect_and_publish_news(single_post=True)
 
     async def cleanup_old_data(self):
         """Очистка старых данных из БД"""
