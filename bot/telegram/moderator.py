@@ -71,12 +71,14 @@ class PostModerator:
             url = news_item.get('url', '')
             image_url = news_item.get('image_url')
             video_url = news_item.get('video_url')
+            media_path = news_item.get('media_path')
+            media_type = news_item.get('media_type')
 
             # Индикатор медиа
             media_info = ""
-            if video_url:
+            if video_url or (media_type == 'video' and media_path):
                 media_info = "\n🎥 Видео: Да"
-            elif image_url:
+            elif image_url or (media_type == 'photo' and media_path):
                 media_info = "\n🖼️ Изображение: Да"
 
             moderation_message = f"""🔔 НОВЫЙ ПОСТ НА МОДЕРАЦИИ
@@ -216,20 +218,31 @@ class PostModerator:
                         news_item = post_data.get('news_item', {})
                         image_url = news_item.get('image_url')
                         video_url = news_item.get('video_url')
+                        media_path = news_item.get('media_path')
+                        media_type = news_item.get('media_type')
                         bot = post_data.get('bot')
 
                         # Публикуем с медиа если оно есть
-                        if video_url or image_url:
+                        has_media = video_url or image_url or media_path
+                        if has_media:
                             message_id = await self.publisher.publish_with_media(
                                 content, news_item,
                                 photo_url=image_url,
-                                video_url=video_url
+                                video_url=video_url,
+                                photo_path=media_path if media_type == 'photo' else None,
+                                video_path=media_path if media_type == 'video' else None
                             )
                         else:
                             message_id = await self.publisher.publish_post(content, news_item)
 
                         if message_id:
-                            media_text = " с видео" if video_url else (" с изображением" if image_url else "")
+                            # Определяем тип медиа
+                            if video_url or media_type == 'video':
+                                media_text = " с видео"
+                            elif image_url or media_type == 'photo':
+                                media_text = " с изображением"
+                            else:
+                                media_text = ""
                             logger.info(f"✅ Пост{media_text} авто-опубликован (msg_id: {message_id})")
 
                             # Уведомляем админа
